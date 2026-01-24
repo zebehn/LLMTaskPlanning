@@ -1,6 +1,5 @@
 import random
 import numpy as np
-import torch
 import hydra
 from hydra.utils import instantiate
 
@@ -19,7 +18,6 @@ def main(cfg):
 
     # set random seed
     random.seed(cfg.planner.random_seed)
-    torch.manual_seed(cfg.planner.random_seed)
     np.random.seed(cfg.planner.random_seed)
 
     if cfg.name == 'alfred':

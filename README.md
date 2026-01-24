@@ -4,162 +4,255 @@
 
 [Jae-Woo Choi](https://choi-jaewoo.github.io/)<sup>1*</sup>, [Youngwoo Yoon](https://sites.google.com/view/youngwoo-yoon/)<sup>1*</sup>, Hyobin Ong<sup>1, 2</sup>, Jaehong Kim<sup>1</sup>, Minsu Jang<sup>1, 2</sup> (*equal contribution)
 
-<sup>1</sup> Electronics and Telecommunications Research Institute, <sup>2</sup> University of Science and Technology 
+<sup>1</sup> Electronics and Telecommunications Research Institute, <sup>2</sup> University of Science and Technology
 
 We introduce a system for automatically quantifying performance of task planning for home-service agents. Task planners are tested on two pairs of datasets and simulators: 1) [ALFRED](https://github.com/askforalfred/alfred) and [AI2-THOR](https://ai2thor.allenai.org/), 2) an extension of [Watch-And-Help](https://github.com/xavierpuigf/watch_and_help) and [VirtualHome](http://virtual-home.org/). Using the proposed benchmark system, we perform extensive experiments with LLMs and prompts, and explore several extentions of the baseline planner.
 
 ## Environment
 
-Ubuntu 14.04+ is required. The scripts were developed and tested on Ubuntu 22.04 and Python 3.8.
-
-You can use WSL-Ubuntu on Windows 10/11.
+- **OS**: Ubuntu 14.04+, macOS, or Windows with WSL
+- **Python**: 3.8 - 3.12
+- **AI2-THOR**: 5.0.0+ (updated for compatibility)
 
 ## Install
 
-1. Clone the whole repo.
+1. Clone the repository:
     ```bash
-    $ git clone {repo_url}
+    git clone {repo_url}
+    cd LLMTaskPlanning
     ```
 
-1. Setup a virtual environment.
+2. Setup a virtual environment:
     ```bash
-    $ conda create -n {env_name} python=3.8
-    $ conda activate {env_name}
+    conda create -n llmtaskplanning python=3.10
+    conda activate llmtaskplanning
     ```
 
-1. Install PyTorch (2.0.0) first (see https://pytorch.org/get-started/locally/).
+3. Install dependencies:
     ```bash
-    # exemplary install command for PyTorch 2.0.0 with CUDA 11.7
-    $ pip install torch==2.0.0+cu117 torchvision==0.15.1+cu117 --index-url https://download.pytorch.org/whl/cu117
+    pip install -r requirements.txt
     ```
 
-1. Install python packages in `requirements.txt`.
+4. Configure API keys by creating a `.env` file:
     ```bash
-    $ pip install -r requirements.txt
+    cp .env.example .env
+    # Edit .env and add your API keys
     ```
 
+## LLM Provider Configuration
+
+The system supports OpenAI API compatible LLM providers through a unified interface:
+
+| Provider | Models | Configuration |
+|----------|--------|---------------|
+| **OpenAI** | gpt-4, gpt-4-turbo, gpt-5.2 | `OPENAI_API_KEY` |
+| **vLLM** | Any model served locally | `VLLM_API_BASE` |
+
+### Environment Variables (.env file)
+
+```bash
+# OpenAI
+OPENAI_API_KEY=your_openai_api_key_here
+
+# vLLM (local server)
+VLLM_API_BASE=http://localhost:8000/v1
+```
 
 ## Benchmarking on ALFRED
 
-### Download ALFRED dataset.
+### Download ALFRED dataset
 ```bash
-$ cd alfred/data
-$ sh download_data.sh json
+cd alfred/data
+bash download_data.sh json
+cd ../..
 ```
 
-### Benchmarking
+### Run Benchmarking
+
+**With OpenAI GPT-4:**
 ```bash
-$ python src/evaluate.py --config-name=config_alfred
+python src/evaluate.py --config-name=config_alfred \
+    planner.provider=openai \
+    planner.model_name=gpt-4
 ```
 
-You can override the configuration. We used [Hydra](https://hydra.cc/) for configuration management.
-
+**With OpenAI GPT-5.2:**
 ```bash
-$ python src/evaluate.py --config-name=config_alfred planner.model=EleutherAI/gpt-neo-125M
-$ python src/evaluate.py --config-name=config_alfred alfred.x_display='1'
-$ python src/evaluate.py --config-name=config_alfred alfred.eval_portion_in_percent=100 prompt.num_examples=18
+python src/evaluate.py --config-name=config_alfred \
+    planner.provider=openai \
+    planner.model_name=gpt-5.2
 ```
 
-### Headless Server
+**With local vLLM server:**
+```bash
+# First, start vLLM server
+vllm serve meta-llama/Llama-2-7b-chat-hf --port 8000
 
-Please run `startx.py` script before running ALFRED experiment on headless servers. Below script uses 1 for the X_DISPLAY id, but you can use different ids such as 0.
+# Then run evaluation
+python src/evaluate.py --config-name=config_alfred \
+    planner.provider=vllm \
+    planner.model_name=meta-llama/Llama-2-7b-chat-hf
+```
+
+### Configuration Options
+
+We use [Hydra](https://hydra.cc/) for configuration management. Key options:
 
 ```bash
-$ sudo python3 alfred/scripts/startx.py 1
+# Change evaluation portion
+python src/evaluate.py --config-name=config_alfred alfred.eval_portion_in_percent=10
+
+# Change number of prompt examples
+python src/evaluate.py --config-name=config_alfred prompt.num_examples=8
+
+# Change X display for headless servers
+python src/evaluate.py --config-name=config_alfred alfred.x_display='1'
+
+# Adjust max planning steps
+python src/evaluate.py --config-name=config_alfred planner.max_steps=30
+```
+
+### Planning Modes
+
+- **API providers** (OpenAI): Use `plan_whole` mode - generates complete action sequence in one API call
+- **Local providers** (vLLM): Use `plan_step_by_step` mode - generates actions iteratively
+
+### Reasoning Models (o1, o3, GPT-5.x)
+
+For reasoning models, you can control the thinking depth with `reasoning_effort`:
+
+```bash
+# Low effort - faster responses, less thorough reasoning
+python src/evaluate.py --config-name=config_alfred \
+    planner.model_name=gpt-5.2 \
+    planner.reasoning_effort=low
+
+# Medium effort - balanced
+python src/evaluate.py --config-name=config_alfred \
+    planner.model_name=gpt-5.2 \
+    planner.reasoning_effort=medium
+
+# High effort - thorough reasoning but slower
+python src/evaluate.py --config-name=config_alfred \
+    planner.model_name=gpt-5.2 \
+    planner.reasoning_effort=high
+```
+
+### Headless Server Setup
+
+For headless servers, run `startx.py` before evaluation:
+
+```bash
+sudo python3 alfred/scripts/startx.py 1
 ```
 
 
 ## Benchmarking on Watch-And-Help
+
 ### Download the VirtualHome Simulator
-- Download the VirtualHome simulator v2.2.2 and extract it
 ```bash
-$ cd {project_root}/virtualhome/simulation/unity_simulator/
-$ wget http://virtual-home.org//release/simulator/v2.0/v2.2.2/linux_exec.zip
-$ unzip linux_exec.zip
+cd virtualhome/simulation/unity_simulator/
+wget http://virtual-home.org//release/simulator/v2.0/v2.2.2/linux_exec.zip
+unzip linux_exec.zip
+cd ../../..
 ```
 
-### Benchmarking on Watch-And-Help-NL
-- Open a new terminal and run VirtualHome simulator
+### Run Benchmarking
 
-```bash
-$ cd {project_root}
-$ ./virtualhome/simulation/unity_simulator/linux_exec.x86_64
-```
+1. Start VirtualHome simulator in one terminal:
+    ```bash
+    ./virtualhome/simulation/unity_simulator/linux_exec.x86_64
+    ```
 
-- Open another terminal and evaluate.
+2. Run evaluation in another terminal:
+    ```bash
+    python src/evaluate.py --config-name=config_wah \
+        planner.provider=openai \
+        planner.model_name=gpt-4
+    ```
 
-```bash
-$ cd {project_root}
-$ python src/evaluate.py --config-name=config_wah
-```
+### Headless Server Setup
 
-- You can override the configuration. We used [Hydra](https://hydra.cc/) for configuration management.
+1. Start Xserver:
+    ```bash
+    cd virtualhome
+    sudo python helper_scripts/startx.py $display_num
+    ```
 
-```bash
-$ cd {project_root}
-$ python src/evaluate.py --config-name=config_wah planner.model_name=EleutherAI/gpt-neo-1.3B prompt.num_examples=10
-```
+2. Start simulator in batchmode:
+    ```bash
+    DISPLAY=:$display_num ./simulation/unity_simulator/linux_exec.x86_64 -batchmode
+    ```
 
-### Benchmarking on Watch-And-Help-NL Using Headless PC
-- Open a new terminal and run Xserver
-```bash
-$ cd {project}/virtualhome
-$ sudo python helper_scripts/startx.py $display_num
-```
-- Open another terminal and run unity simulator
-```bash
-$ cd {project}/virtualhome
-$ DISPLAY=:$display_num ./simulation/unity_simulator/linux_exec.x86_64 -batchmode
-```
-- Open another terminal and evaluate
-```bash
-$ cd {project_root}
-$ python src/evaluate.py --config-name=config_wah_headless
-```
+3. Run evaluation:
+    ```bash
+    python src/evaluate.py --config-name=config_wah_headless \
+        planner.provider=openai \
+        planner.model_name=gpt-4
+    ```
 
 
 ## Extensions
 
-### In-context example selection
+### In-context Example Selection
 ```bash
-$ python src/evaluate.py --config-name=config_wah prompt.select_method=same_task
-$ python src/evaluate.py --config-name=config_wah prompt.select_method=topk
+python src/evaluate.py --config-name=config_wah prompt.select_method=same_task
+python src/evaluate.py --config-name=config_wah prompt.select_method=topk
 ```
 
-### Replanning
+### Replanning with Feedback
 ```bash
-$ python src/evaluate.py --config-name=config_alfred planner.use_predefined_prompt=True
+python src/evaluate.py --config-name=config_alfred planner.use_predefined_prompt=True
 ```
 
-
-## Extract train samples from ALFRED for language model finetuning
-
-Make sure you have preprocessed data (run ALFRED benchmarking at least once).
-
-```bash
-$ python src/alfred/exmaine_alfred_data.py
-```
-
-The output text resource `resource/alfred_train_text_samples.txt` can be used for finetuning. 
 
 ## WAH-NL Dataset
 
 You can find the WAH-NL data, which is our extension of WAH, in `./dataset` folder.
 
 
+## Project Structure
+
+```
+LLMTaskPlanning/
+├── src/
+│   ├── llm/                    # LLM provider abstraction
+│   │   ├── base.py             # Abstract base class
+│   │   ├── factory.py          # Provider factory
+│   │   ├── openai_provider.py  # OpenAI implementation
+│   │   └── vllm_provider.py    # vLLM implementation
+│   ├── task_planner.py         # Base task planner
+│   ├── alfred/                 # ALFRED evaluator
+│   └── wah/                    # Watch-And-Help evaluator
+├── conf/                       # Hydra configurations
+├── alfred/                     # ALFRED environment
+├── virtualhome/                # VirtualHome environment
+└── dataset/                    # WAH-NL dataset
+```
+
+
 ## FAQ
 
-* Running out of disk space for Huggingface models
-  * You can set the cache folder to be in another disk.
-    ```bash
-    $ export TRANSFORMERS_CACHE=/mnt/otherdisk/.hf_cache/
-    ```
+**Q: I encounter 'cannot find X server with xdpyinfo' in running ALFRED experiments.**
 
-* I have encountered 'cannot find X server with xdpyinfo' in running ALFRED experiments.
-  * Please try another x_display number (this should be a string; e.g., '1') in the config file.
-    ```bash
-    $ python src/evaluate.py --config-name=config_alfred alfred.x_display='1'
-    ```
+A: Try a different x_display number:
+```bash
+python src/evaluate.py --config-name=config_alfred alfred.x_display='1'
+```
+
+**Q: How do I use a custom API endpoint?**
+
+A: Set the API base URL in your `.env` file:
+```bash
+OPENAI_API_BASE=https://your-custom-endpoint.com/v1
+```
+
+**Q: Which planning mode should I use?**
+
+A: The system automatically selects the appropriate mode:
+- API providers (OpenAI) → `plan_whole` (faster, single API call)
+- Local providers (vLLM) → `plan_step_by_step` (better for smaller models)
+
 
 ## Citation
 
