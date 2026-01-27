@@ -272,6 +272,52 @@ python src/evaluate.py --config-name=config_alfred planner.use_predefined_prompt
 ```
 
 
+## Customizing Prompts
+
+The system uses externalized prompt templates that can be easily customized without modifying code.
+
+### Prompt Template Files
+
+All prompt templates are stored in `src/prompts/templates/`:
+
+| File | Purpose |
+|------|---------|
+| `action_selection_system.txt` | System message for action selection |
+| `action_selection_user.txt` | User message template for action selection |
+| `plan_generation_system.txt` | System message for plan generation |
+| `plan_generation_user.txt` | User message template for plan generation |
+| `step_by_step_format.txt` | Format for initial step-by-step prompt |
+| `step_continuation.txt` | Format for continuing steps |
+| `step_with_failure.txt` | Format for steps that failed |
+
+### Customization Examples
+
+**Change the robot's persona** by editing `plan_generation_system.txt`:
+```
+You are a helpful home assistant robot. When given a task, you carefully plan
+each step to accomplish it safely and efficiently.
+```
+
+**Change action selection behavior** by editing `action_selection_system.txt`:
+```
+You are a robot operating in a home environment. Given the current situation
+and a list of possible actions, select the single best action to take next.
+Respond with ONLY the exact action text.
+```
+
+### Template Variables
+
+Templates use Python's `str.format()` syntax for variable substitution:
+
+| Template | Variables |
+|----------|-----------|
+| `action_selection_user.txt` | `{prompt}`, `{candidates}` |
+| `plan_generation_user.txt` | `{examples}`, `{skills}`, `{query}` |
+| `step_by_step_format.txt` | `{query}` |
+| `step_continuation.txt` | `{step}`, `{next_step_num}` |
+| `step_with_failure.txt` | `{step}`, `{failure_message}`, `{next_step_num}` |
+
+
 ## WAH-NL Dataset
 
 You can find the WAH-NL data, which is our extension of WAH, in `./dataset` folder.

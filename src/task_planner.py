@@ -5,6 +5,7 @@ import logging
 from typing import List, Tuple, Optional
 
 from llm import LLMProviderFactory, LLMProvider
+from prompts import get_prompt_loader
 
 
 class TaskPlanner:
@@ -28,6 +29,8 @@ class TaskPlanner:
         print(f"Loading LLM: {self.model_name}")
         self.llm: LLMProvider = LLMProviderFactory.from_config(cfg)
         print(f"Provider: {type(self.llm).__name__}")
+
+        self.prompt_loader = get_prompt_loader()
 
         logging.getLogger("openai").setLevel(logging.WARNING)
         logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -138,13 +141,13 @@ class TaskPlanner:
         if len(prev_steps) >= self.max_steps:
             return None, None
 
-        prompt = self.prompt + f'Human: {query.strip()}\nRobot: 1. '
+        prompt = self.prompt + self.prompt_loader.format_step_by_step_start(query)
 
         for i, (step, msg) in enumerate(zip(prev_steps, prev_msgs)):
             if self.use_predefined_prompt and len(msg) > 0:
-                prompt += step + f' (this action failed: {msg.lower()}), {i + 2}. '
+                prompt += self.prompt_loader.format_step_with_failure(step, msg, i + 2)
             else:
-                prompt += step + f', {i + 2}. '
+                prompt += self.prompt_loader.format_step_continuation(step, i + 2)
 
         # Score candidates
         scores = self.score(prompt, self.skill_set)

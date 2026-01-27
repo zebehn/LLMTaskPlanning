@@ -5,6 +5,7 @@ Implements the Strategy Pattern for interchangeable LLM backends.
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from prompts import PromptLoader, get_prompt_loader
 
 
 @dataclass
@@ -30,6 +31,7 @@ class LLMProvider(ABC):
     def __init__(self, config: LLMConfig):
         self.config = config
         self.model_name = config.model_name
+        self.prompt_loader = get_prompt_loader()
 
     @abstractmethod
     def chat_completion(
@@ -75,38 +77,10 @@ class LLMProvider(ABC):
 
         This is a helper method that can be used by all providers.
         """
-        candidates_text = '\n'.join([f"{i+1}. {c}" for i, c in enumerate(candidates)])
-
-        return [
-            {
-                "role": "system",
-                "content": "You are a robot operating in a home. Given a partial action sequence, select the most appropriate next action from the provided list. Respond with ONLY the exact action text, nothing else."
-            },
-            {
-                "role": "user",
-                "content": f"{prompt}\n\nCandidate actions:\n{candidates_text}\n\nSelect the best next action from the candidates above. Respond with only the exact action text."
-            }
-        ]
+        return self.prompt_loader.get_action_selection_messages(prompt, candidates)
 
     def _build_plan_messages(self, example_text: str, skills_text: str, query: str) -> List[Dict[str, str]]:
         """
         Build messages for whole-plan generation task.
         """
-        return [
-            {
-                "role": "system",
-                "content": "You are a robot operating in a home. A human user can ask you to do various tasks and you are supposed to tell the sequence of actions you would do to accomplish your task."
-            },
-            {
-                "role": "user",
-                "content": f"""Examples of human instructions and possible your (robot) answers:
-{example_text}
-
-Now please answer the sequence of actions for the input instruction.
-You should use one of actions of this list: {skills_text}.
-List the actions with comma separator.
-
-Input user instruction:
-{query}"""
-            }
-        ]
+        return self.prompt_loader.get_plan_generation_messages(example_text, skills_text, query)
