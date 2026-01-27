@@ -1,12 +1,44 @@
 # LoTa-Bench: Benchmarking Language-oriented Task Planners for Embodied Agents
 
-### [Paper (ICLR 2024)](https://arxiv.org/abs/2402.08178) | [Project Page](https://choi-jaewoo.github.io/LoTa-Bench/)
+> **Fork Notice**: This is a fork of the original [LoTa-Bench](https://github.com/lbaa2022/LLMTaskPlanning) repository with significant updates for modern compatibility and extended LLM support.
+
+### [Paper (ICLR 2024)](https://arxiv.org/abs/2402.08178) | [Project Page](https://choi-jaewoo.github.io/LoTa-Bench/) | [Original Repository](https://github.com/lbaa2022/LLMTaskPlanning)
 
 [Jae-Woo Choi](https://choi-jaewoo.github.io/)<sup>1*</sup>, [Youngwoo Yoon](https://sites.google.com/view/youngwoo-yoon/)<sup>1*</sup>, Hyobin Ong<sup>1, 2</sup>, Jaehong Kim<sup>1</sup>, Minsu Jang<sup>1, 2</sup> (*equal contribution)
 
 <sup>1</sup> Electronics and Telecommunications Research Institute, <sup>2</sup> University of Science and Technology
 
 We introduce a system for automatically quantifying performance of task planning for home-service agents. Task planners are tested on two pairs of datasets and simulators: 1) [ALFRED](https://github.com/askforalfred/alfred) and [AI2-THOR](https://ai2thor.allenai.org/), 2) an extension of [Watch-And-Help](https://github.com/xavierpuigf/watch_and_help) and [VirtualHome](http://virtual-home.org/). Using the proposed benchmark system, we perform extensive experiments with LLMs and prompts, and explore several extentions of the baseline planner.
+
+---
+
+## Changes in This Fork
+
+This fork introduces the following improvements over the original repository:
+
+### AI2-THOR 5.x Compatibility
+- **Updated from AI2-THOR 2.x to 5.0.0+** - The original codebase used AI2-THOR 2.x which is no longer maintained. This fork includes all necessary API changes:
+  - `TeleportFull` action now uses Vector3 rotation format (`{'x': 0, 'y': 90, 'z': 0}`) instead of scalar rotation
+  - Removed deprecated `rotateOnTeleport` parameter
+  - Added required `standing` parameter for teleport actions
+  - Replaced removed `SetStateOfAllObjects` with individual object state actions
+  - Fixed `visibilityDistance` parameter naming (camelCase)
+  - Platform-specific controller initialization (no `x_display` on macOS)
+
+### OpenAI API Compatible LLM Support
+- **Unified LLM provider interface** - Refactored to support any OpenAI API compatible endpoint:
+  - Native OpenAI support (GPT-4, GPT-4-turbo, GPT-5.x, o1, o3)
+  - **vLLM support** - Run evaluations with locally hosted models via vLLM server
+  - Easy extensibility for other OpenAI-compatible providers (Ollama, LM Studio, etc.)
+- **Reasoning model support** - Added `reasoning_effort` parameter for o1/o3/GPT-5.x models
+
+### Other Improvements
+- Modernized Python compatibility (3.8 - 3.12)
+- Environment variable configuration via `.env` file
+- Improved cross-platform support (removed Linux-specific dependencies)
+- Added comprehensive test suite for AI2-THOR compatibility
+
+---
 
 ## Environment
 
