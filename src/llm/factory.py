@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from .base import LLMProvider, LLMConfig
 from .openai_provider import OpenAIProvider
 from .vllm_provider import VLLMProvider
+from .ollama_provider import OllamaProvider
+from .lmstudio_provider import LMStudioProvider
 
 
 class LLMProviderFactory:
@@ -28,6 +30,8 @@ class LLMProviderFactory:
     PROVIDERS = {
         "openai": OpenAIProvider,
         "vllm": VLLMProvider,
+        "ollama": OllamaProvider,
+        "lmstudio": LMStudioProvider,
     }
 
     @classmethod
@@ -118,7 +122,7 @@ class LLMProviderFactory:
                 legacy_provider = parts[0].lower()
                 model_name = parts[1]
                 # Map legacy provider names (OpenAI API compatible only)
-                if legacy_provider in ['openai', 'vllm']:
+                if legacy_provider in ['openai', 'vllm', 'ollama', 'lmstudio']:
                     provider_type = legacy_provider
 
         # Get API key and base

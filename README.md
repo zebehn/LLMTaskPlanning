@@ -75,10 +75,12 @@ This fork introduces the following improvements over the original repository:
 
 The system supports OpenAI API compatible LLM providers through a unified interface:
 
-| Provider | Models | Configuration |
-|----------|--------|---------------|
-| **OpenAI** | gpt-4, gpt-4-turbo, gpt-5.2 | `OPENAI_API_KEY` |
-| **vLLM** | Any model served locally | `VLLM_API_BASE` |
+| Provider | Models | Default Port | Configuration |
+|----------|--------|--------------|---------------|
+| **OpenAI** | gpt-4, gpt-4-turbo, gpt-5.2, o1, o3 | N/A | `OPENAI_API_KEY` |
+| **vLLM** | Any model served locally | 8000 | `VLLM_API_BASE` |
+| **Ollama** | llama2, llama3, mistral, codellama, etc. | 11434 | `OLLAMA_API_BASE` |
+| **LM Studio** | Any loaded model | 1234 | `LMSTUDIO_API_BASE` |
 
 ### Environment Variables (.env file)
 
@@ -88,6 +90,12 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 # vLLM (local server)
 VLLM_API_BASE=http://localhost:8000/v1
+
+# Ollama (local server)
+OLLAMA_API_BASE=http://localhost:11434/v1
+
+# LM Studio (local server)
+LMSTUDIO_API_BASE=http://localhost:1234/v1
 ```
 
 ## Benchmarking on ALFRED
@@ -124,6 +132,32 @@ vllm serve meta-llama/Llama-2-7b-chat-hf --port 8000
 python src/evaluate.py --config-name=config_alfred \
     planner.provider=vllm \
     planner.model_name=meta-llama/Llama-2-7b-chat-hf
+```
+
+**With Ollama:**
+```bash
+# First, start Ollama and pull a model
+ollama serve
+ollama pull llama2
+
+# Then run evaluation
+python src/evaluate.py --config-name=config_alfred \
+    planner.provider=ollama \
+    planner.model_name=llama2
+```
+
+**With LM Studio:**
+```bash
+# Start LM Studio and load a model, then run evaluation
+python src/evaluate.py --config-name=config_alfred \
+    planner.provider=lmstudio \
+    planner.model_name=your-loaded-model
+
+# With custom endpoint (e.g., remote LM Studio server)
+python src/evaluate.py --config-name=config_alfred \
+    planner.provider=lmstudio \
+    planner.model_name=openai/gpt-oss-20b \
+    planner.api_base=http://10.254.90.90:1234/v1
 ```
 
 ### Configuration Options
