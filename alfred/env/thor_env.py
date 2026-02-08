@@ -104,6 +104,31 @@ class ThorEnv(Controller):
         '''
         pass  # AI2-THOR 5.x doesn't have EmptyLiquidObject action
 
+    def _apply_object_toggles(self, object_toggles):
+        '''
+        Apply toggle states to objects individually.
+        Replaces SetObjectToggles which was removed in AI2-THOR 5.x.
+        Each entry is {'objectType': str, 'isOn': bool}.
+        '''
+        for toggle in object_toggles:
+            obj_type = toggle['objectType']
+            is_on = toggle['isOn']
+            # Find matching objects in the scene by type
+            for obj in self.last_event.metadata['objects']:
+                if obj['objectType'] == obj_type:
+                    if is_on and obj.get('toggleable', False) and not obj.get('isToggled', False):
+                        super().step(dict(
+                            action='ToggleObjectOn',
+                            objectId=obj['objectId'],
+                            forceAction=True,
+                        ))
+                    elif not is_on and obj.get('toggleable', False) and obj.get('isToggled', False):
+                        super().step(dict(
+                            action='ToggleObjectOff',
+                            objectId=obj['objectId'],
+                            forceAction=True,
+                        ))
+
     def reset(self, scene_name_or_num,
               grid_size=constants.AGENT_STEP_SIZE / constants.RECORD_SMOOTHING_FACTOR,
               camera_y=constants.CAMERA_HEIGHT_OFFSET,
@@ -167,8 +192,9 @@ class ThorEnv(Controller):
             visibilityDistance=constants.VISIBILITY_DISTANCE,
             makeAgentsVisible=False,
         ))
+        # AI2-THOR 5.x: SetObjectToggles was removed; toggle objects individually
         if len(object_toggles) > 0:
-            super().step((dict(action='SetObjectToggles', objectToggles=object_toggles)))
+            self._apply_object_toggles(object_toggles)
 
         # Set dirty states for individual objects (AI2-THOR 5.x compatible)
         # Note: EmptyLiquidObject action was removed in AI2-THOR 5.x
