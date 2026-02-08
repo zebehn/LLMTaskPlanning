@@ -131,3 +131,51 @@ class AlfredTaskPlanner(TaskPlanner):
         log.info(skills)
 
         return skills
+
+    def init_instance_skill_set(self, registry, object_metadata):
+        """Generate instance-aware skill set from live object registry.
+
+        Args:
+            registry: Dict mapping readable_name -> AI2-THOR objectId
+            object_metadata: List of AI2-THOR object metadata dicts
+        Returns:
+            List of skill strings with instance-specific directives
+        """
+        # Build objectId -> metadata lookup
+        obj_meta_by_id = {o['objectId']: o for o in object_metadata}
+
+        # Sliceable types (ithor names)
+        sliceable_types = {s.casefold() for s in self.alfred_slice_obj}
+
+        skills = [' done']
+
+        for readable_name, thor_id in sorted(registry.items()):
+            meta = obj_meta_by_id.get(thor_id)
+            if meta is None:
+                continue
+
+            obj_type = thor_id.split('|')[0]
+
+            # find for all objects
+            skills.append(f' find {readable_name}')
+
+            # pick up for pickupable
+            if meta.get('pickupable', False):
+                skills.append(f' pick up {readable_name}')
+
+            # open / close for openable
+            if meta.get('openable', False):
+                skills.append(f' open {readable_name}')
+                skills.append(f' close {readable_name}')
+
+            # turn on / off for toggleable
+            if meta.get('toggleable', False):
+                skills.append(f' turn on {readable_name}')
+                skills.append(f' turn off {readable_name}')
+
+            # slice for sliceable types
+            if obj_type.casefold() in sliceable_types:
+                skills.append(f' slice {readable_name}')
+
+        log.info(f'# of instance skills: {len(skills)}')
+        return skills
