@@ -3,6 +3,8 @@ name: alfred
 defaults:
   - hydra: default.yaml
   - planner: default.yaml
+  - override hydra/help: custom
+  - _self_
 
 out_dir: ${hydra:run.dir}
 

@@ -1,20 +1,20 @@
-import random
-import numpy as np
-import hydra
-from hydra.utils import instantiate
-
 import sys
 sys.path.insert(0, '.')
 sys.path.insert(0, '..')
 sys.path.insert(0, 'src')
 sys.path.insert(0, './alfred')
 
-from src.alfred.alfred_evaluator import AlfredEvaluator
-from src.alfred.gt_evaluator import GroundTruthEvaluator
-from wah.wah_evaluator import WahEvaluator
+import hydra
+
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg):
+    import random
+    import numpy as np
+    from src.alfred.alfred_evaluator import AlfredEvaluator
+    from src.alfred.gt_evaluator import GroundTruthEvaluator
+    from wah.wah_evaluator import WahEvaluator
+
     print(cfg)
 
     # set random seed
