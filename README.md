@@ -266,6 +266,14 @@ python src/evaluate.py --config-name=config_alfred_gt \
 
 Running the same command twice with the same seed and portion will select and evaluate the identical set of tasks.
 
+**Evaluate a single specific trial:**
+```bash
+python src/evaluate.py --config-name=config_alfred_gt \
+    gt.trial_id=trial_T20190907_174127_043461
+```
+
+This skips random selection and evaluates only the specified task. Useful for debugging a specific failure or re-running a single plan.
+
 **On Linux with X11 display:**
 ```bash
 python src/evaluate.py --config-name=config_alfred_gt gt.x_display='0'
@@ -281,6 +289,7 @@ All parameters live under the `gt` key in `conf/config_alfred_gt.yaml` and can b
 | `gt.random_seed` | `42` | Seed for reproducible random task selection |
 | `gt.gt_data_file` | `resource/alfred_examples_for_prompt.json` | Path to the ground-truth examples file |
 | `gt.x_display` | `'0'` | X11 display number for AI2-THOR (Linux only) |
+| `gt.trial_id` | `null` | Evaluate a single specific trial ID (skips random selection when set) |
 
 ### Output
 
