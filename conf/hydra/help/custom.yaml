@@ -1,0 +1,79 @@
+# @package hydra.help
+app_name: LoTa-Bench Evaluator
+
+template: |-
+  == ${hydra.help.app_name} ==
+
+  Benchmark language-oriented task planners for embodied agents.
+  Evaluate LLM planners on ALFRED (AI2-THOR) and Watch-And-Help (VirtualHome).
+
+  Usage:
+    python src/evaluate.py --config-name=<CONFIG> [OVERRIDES...]
+
+  Evaluation Modes:
+    --config-name=config_alfred       LLM-based ALFRED evaluation in AI2-THOR
+    --config-name=config_alfred_gt    Ground-truth plan evaluation (validate simulator)
+    --config-name=config_wah          Watch-And-Help evaluation in VirtualHome
+    --config-name=config_wah_headless Watch-And-Help on headless servers
+
+  LLM Provider Options:
+    planner.provider=<PROVIDER>       openai, vllm, ollama, lmstudio
+    planner.model_name=<MODEL>        Model identifier (e.g. gpt-4, llama2)
+    planner.api_base=<URL>            Custom API endpoint URL
+    planner.reasoning_effort=<LEVEL>  low, medium, high (for o1/o3/GPT-5.x)
+
+  ALFRED Options (config_alfred):
+    alfred.eval_set=<SET>             valid_seen or valid_unseen
+    alfred.eval_portion_in_percent=N  Percentage of tasks to evaluate (1-100)
+    alfred.x_display=N                X11 display number (Linux only)
+    prompt.num_examples=N             Number of in-context examples
+
+  Ground-Truth Options (config_alfred_gt):
+    gt.eval_portion_in_percent=N      Percentage of GT plans to evaluate (1-100)
+    gt.random_seed=N                  Seed for reproducible task selection
+    gt.trial_id=<TRIAL_ID>           Evaluate a single specific trial only
+    gt.x_display=N                    X11 display number (Linux only)
+
+  WAH Options (config_wah):
+    planner.max_steps=N               Maximum action steps per task
+    planner.dynamic_skill_set=BOOL    Enable dynamic skill set updates
+    prompt.select_method=<METHOD>     uniform, same_task, topk
+    environment.base_port=N           VirtualHome base port
+
+  Common Options:
+    planner.max_steps=N               Maximum action steps per task (default: 25)
+    planner.random_seed=N             Random seed for reproducibility
+    planner.temperature=F             LLM sampling temperature (default: 0.0)
+    planner.use_predefined_prompt=BOOL  Use predefined prompt with replanning
+
+  Action Primitives (ALFRED):
+    Generic:   find a <obj>, pick up the <obj>, put down the <obj>,
+               open/close the <obj>, turn on/off the <obj>,
+               slice the <obj>, drop, done
+    Instance:  find <ID>, pick up <ID>, open/close <ID>,
+               turn on/off <ID>, slice <ID>
+               (where <ID> is e.g. Apple_1, Mug_02, Fridge_1)
+
+  Examples:
+    # ALFRED with GPT-4
+    python src/evaluate.py --config-name=config_alfred \
+        planner.provider=openai planner.model_name=gpt-4
+
+    # ALFRED with local Ollama
+    python src/evaluate.py --config-name=config_alfred \
+        planner.provider=ollama planner.model_name=llama2
+
+    # Ground-truth: 10% of plans
+    python src/evaluate.py --config-name=config_alfred_gt \
+        gt.eval_portion_in_percent=10
+
+    # Ground-truth: single trial
+    python src/evaluate.py --config-name=config_alfred_gt \
+        gt.trial_id=trial_T20190907_174127_043461
+
+    # Watch-And-Help
+    python src/evaluate.py --config-name=config_wah \
+        planner.provider=openai planner.model_name=gpt-4
+
+  Use --hydra-help to view Hydra framework options.
+  See README.md for full documentation.

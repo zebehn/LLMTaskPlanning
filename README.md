@@ -40,6 +40,13 @@ This fork introduces the following improvements over the original repository:
   - Machine-readable JSON report alongside human-readable log summary
   - 47 unit tests covering all evaluation logic (no simulator required to run tests)
 
+### Instance-Specific Action Primitives
+- **Target specific object instances** by registry ID (e.g., `find Apple_1`, `pick up Mug_02`) instead of only generic type-based commands
+- **Object instance registry** maps AI2-THOR objectIds to human-readable names (`Apple_1`, `Fridge_1`) and vice versa, rebuilt automatically on scene load and after slice actions
+- **Full backward compatibility** — existing generic directives (`find a apple`, `pick up the mug`) continue to work identically
+- **Instance-aware skill set generation** provides LLM planners with instance-specific action candidates from live scene state
+- 53 unit tests covering detection, navigation, manipulation, skill generation, backward compatibility, and edge cases
+
 ### Other Improvements
 - Modernized Python compatibility (3.8 - 3.12)
 - Environment variable configuration via `.env` file
@@ -259,6 +266,14 @@ python src/evaluate.py --config-name=config_alfred_gt \
 
 Running the same command twice with the same seed and portion will select and evaluate the identical set of tasks.
 
+**Evaluate a single specific trial:**
+```bash
+python src/evaluate.py --config-name=config_alfred_gt \
+    gt.trial_id=trial_T20190907_174127_043461
+```
+
+This skips random selection and evaluates only the specified task. Useful for debugging a specific failure or re-running a single plan.
+
 **On Linux with X11 display:**
 ```bash
 python src/evaluate.py --config-name=config_alfred_gt gt.x_display='0'
@@ -274,6 +289,7 @@ All parameters live under the `gt` key in `conf/config_alfred_gt.yaml` and can b
 | `gt.random_seed` | `42` | Seed for reproducible random task selection |
 | `gt.gt_data_file` | `resource/alfred_examples_for_prompt.json` | Path to the ground-truth examples file |
 | `gt.x_display` | `'0'` | X11 display number for AI2-THOR (Linux only) |
+| `gt.trial_id` | `null` | Evaluate a single specific trial ID (skips random selection when set) |
 
 ### Output
 
@@ -473,6 +489,216 @@ Templates use Python's `str.format()` syntax for variable substitution:
 You can find the WAH-NL data, which is our extension of WAH, in `./dataset` folder.
 
 
+## Action Primitives
+
+The agent interacts with the AI2-THOR simulator through a set of action primitives. Each primitive is issued as a natural-language instruction string and executed via `ThorConnector.llm_skill_interact()`.
+
+All actions return a result dict:
+```python
+{"action": "find a apple", "success": True, "message": ""}
+```
+
+### Generic Actions
+
+Generic actions target objects by type. The simulator selects the closest matching instance automatically.
+
+| Instruction Format | Action | Example |
+|-------------------|--------|---------|
+| `find a/an <object>` | Navigate to nearest object of type | `find a apple`, `find an egg` |
+| `pick up the <object>` | Pick up the nearest object of type | `pick up the mug` |
+| `put down the <object>` | Place held object on current receptacle | `put down the apple` |
+| `open the <object>` | Open a container | `open the fridge` |
+| `close the <object>` | Close a container | `close the microwave` |
+| `turn on the <object>` | Toggle a device on | `turn on the desk lamp` |
+| `turn off the <object>` | Toggle a device off | `turn off the faucet` |
+| `slice the <object>` | Slice a sliceable object (requires holding a knife) | `slice the bread` |
+| `drop` | Drop the currently held object | `drop` |
+| `done` | Terminate the plan | `done` |
+
+**Object categories:**
+
+| Category | Objects |
+|----------|---------|
+| **Pickupable** (51) | Apple, Bread, Mug, Knife, Egg, Tomato, Potato, Lettuce, Plate, Bowl, Cup, Fork, Spoon, ... |
+| **Openable** (7) | Safe, Laptop, Fridge, Box, Microwave, Cabinet, Drawer |
+| **Sliceable** (5) | Potato, Lettuce, Tomato, Apple, Bread |
+| **Toggleable** (4) | Microwave, DeskLamp, FloorLamp, Faucet |
+| **Receptacles** (30) | CounterTop, Sink, Fridge, DiningTable, Shelf, Drawer, Cabinet, Bed, Desk, ... |
+
+### Instance-Specific Actions
+
+Instance-specific actions target a particular object by its registry ID (e.g., `Apple_1`, `Mug_02`). This allows the agent to disambiguate between multiple objects of the same type.
+
+**Instance ID format:** `<ObjectType>_<number>` — CamelCase type name, underscore, numeric suffix (e.g., `Apple_1`, `DeskLamp_02`, `StoveBurner_1`). Leading zeros are normalized (`Apple_01` resolves to the same object as `Apple_1`).
+
+| Instruction Format | Action | Example |
+|-------------------|--------|---------|
+| `find <InstanceID>` | Navigate to specific instance | `find Apple_1` |
+| `pick up <InstanceID>` | Pick up specific instance | `pick up Mug_02` |
+| `open <InstanceID>` | Open specific container | `open Fridge_1` |
+| `close <InstanceID>` | Close specific container | `close Cabinet_3` |
+| `turn on <InstanceID>` | Toggle specific device on | `turn on DeskLamp_1` |
+| `turn off <InstanceID>` | Toggle specific device off | `turn off FloorLamp_2` |
+| `slice <InstanceID>` | Slice specific instance | `slice Bread_1` |
+
+**How it works:**
+1. On scene load, an **object registry** maps each AI2-THOR objectId (e.g., `Mug|01|02|03|04`) to a human-readable name (e.g., `Mug_1`)
+2. When an instruction contains an instance ID, the system resolves it to the exact AI2-THOR objectId via the reverse registry
+3. The resolved objectId is passed directly to the action method, bypassing the type-based closest-object lookup
+4. After a `slice` action, the registry is rebuilt to include newly created sliced instances
+
+**Mixed-mode plans** are fully supported — generic and instance-specific actions can be freely interleaved:
+```
+1. find Apple_1          # instance: navigate to specific apple
+2. pick up the apple     # generic: pick up nearest apple
+3. find Fridge_1         # instance: navigate to specific fridge
+4. open the fridge       # generic: open nearest fridge
+5. put down the apple    # generic: put down on current receptacle
+6. close Fridge_1        # instance: close specific fridge
+```
+
+### Skill Set Generation
+
+The `AlfredTaskPlanner` provides two methods for generating candidate action lists for LLM planners:
+
+- **`init_skill_set()`** — Generates generic skill set from hardcoded object categories (e.g., `find a apple`, `pick up the mug`). Used for type-based planning.
+- **`init_instance_skill_set(registry, object_metadata)`** — Generates instance-aware skill set from the live scene registry. Cross-references each object's properties (pickupable, openable, toggleable, sliceable) to produce only valid actions per instance (e.g., `find Apple_1`, `pick up Apple_1`, `slice Apple_1` but not `open Apple_1`).
+
+---
+
+## CLI Reference
+
+The system uses a single entry point with [Hydra](https://hydra.cc/) configuration management:
+
+```bash
+python src/evaluate.py --config-name=<CONFIG> [OVERRIDES...]
+```
+
+### Evaluation Modes
+
+| Config Name | Mode | Description |
+|------------|------|-------------|
+| `config_alfred` | LLM-based ALFRED | Run an LLM planner on ALFRED tasks in AI2-THOR |
+| `config_alfred_gt` | Ground-truth ALFRED | Execute known-correct plans to validate the simulator |
+| `config_wah` | Watch-And-Help | Run an LLM planner on WAH tasks in VirtualHome |
+| `config_wah_headless` | WAH (headless) | Same as `config_wah` for headless server setups |
+
+### Common Options
+
+These options apply across all evaluation modes:
+
+```bash
+# LLM provider selection
+planner.provider=openai          # openai, vllm, ollama, lmstudio
+planner.model_name=gpt-4         # model identifier for the provider
+planner.api_base=http://...      # custom API endpoint URL
+
+# Planning behavior
+planner.max_steps=30             # maximum action steps per task
+planner.random_seed=42           # seed for reproducibility
+planner.reasoning_effort=medium  # low/medium/high (for o1/o3/GPT-5.x)
+planner.use_predefined_prompt=True  # use predefined prompt (enables replanning with feedback)
+
+# Prompt configuration
+prompt.num_examples=6            # number of in-context examples
+prompt.select_method=uniform     # uniform, same_task, topk
+```
+
+### ALFRED Options (`config_alfred`)
+
+```bash
+alfred.x_display='0'                    # X11 display number (Linux)
+alfred.eval_set=valid_seen              # valid_seen or valid_unseen
+alfred.eval_portion_in_percent=5        # percentage of tasks to evaluate (1-100)
+alfred.random_seed_for_eval_subset=1    # seed for task subset selection
+```
+
+### Ground-Truth Options (`config_alfred_gt`)
+
+```bash
+gt.eval_portion_in_percent=5     # percentage of GT plans to evaluate (1-100)
+gt.random_seed=42                # seed for reproducible task selection
+gt.gt_data_file=resource/alfred_examples_for_prompt.json  # ground-truth data file
+gt.x_display='0'                 # X11 display number (Linux)
+gt.trial_id=null                 # evaluate a single specific trial ID
+```
+
+### WAH Options (`config_wah`)
+
+```bash
+planner.scoring_batch_size=10    # batch size for scoring
+planner.score_function=sum       # scoring function
+planner.dynamic_skill_set=False  # dynamic skill set updates
+
+dataset.wah_testset=dataset/wah_nl_test.json    # test set path
+dataset.wah_trainset=dataset/wah_nl_train.json  # training set path
+
+environment.use_editor=True      # use Unity editor mode
+environment.base_port=8080       # VirtualHome base port
+environment.port_id=1            # port offset
+```
+
+### Quick Examples
+
+```bash
+# ALFRED with GPT-4, 10% of valid_seen tasks
+python src/evaluate.py --config-name=config_alfred \
+    planner.provider=openai planner.model_name=gpt-4 \
+    alfred.eval_portion_in_percent=10
+
+# ALFRED with local vLLM, step-by-step planning
+vllm serve meta-llama/Llama-2-7b-chat-hf --port 8000
+python src/evaluate.py --config-name=config_alfred \
+    planner.provider=vllm planner.model_name=meta-llama/Llama-2-7b-chat-hf
+
+# ALFRED with Ollama
+python src/evaluate.py --config-name=config_alfred \
+    planner.provider=ollama planner.model_name=llama2
+
+# ALFRED with LM Studio on a remote server
+python src/evaluate.py --config-name=config_alfred \
+    planner.provider=lmstudio planner.model_name=openai/gpt-oss-20b \
+    planner.api_base=http://10.254.90.90:1234/v1
+
+# Ground-truth evaluation: all plans, seed 0
+python src/evaluate.py --config-name=config_alfred_gt \
+    gt.eval_portion_in_percent=100 gt.random_seed=0
+
+# Ground-truth evaluation: single trial
+python src/evaluate.py --config-name=config_alfred_gt \
+    gt.trial_id=trial_T20190907_174127_043461
+
+# WAH with GPT-4 and same-task example selection
+python src/evaluate.py --config-name=config_wah \
+    planner.provider=openai planner.model_name=gpt-4 \
+    prompt.select_method=same_task
+
+# Reasoning model with high effort
+python src/evaluate.py --config-name=config_alfred \
+    planner.model_name=gpt-5.2 planner.reasoning_effort=high
+```
+
+### Running Tests
+
+```bash
+# All tests
+pytest tests/ -v
+
+# Instance-specific action tests only (53 tests)
+pytest tests/test_instance_actions.py -v
+
+# Ground-truth evaluator tests only (47 tests)
+pytest tests/test_gt_evaluator.py tests/test_gt_report.py -v
+
+# AI2-THOR compatibility tests only
+pytest tests/test_ai2thor_compatibility.py -v
+
+# Lint check
+ruff check src/
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -485,21 +711,32 @@ LLMTaskPlanning/
 │   │   ├── base.py             # Abstract base class
 │   │   ├── factory.py          # Provider factory
 │   │   ├── openai_provider.py  # OpenAI implementation
-│   │   └── vllm_provider.py    # vLLM implementation
+│   │   ├── vllm_provider.py    # vLLM implementation
+│   │   ├── ollama_provider.py  # Ollama implementation
+│   │   └── lmstudio_provider.py # LM Studio implementation
+│   ├── prompts/                # Prompt template system
+│   │   ├── loader.py           # Template loader
+│   │   └── templates/          # Externalized prompt templates
 │   ├── alfred/                 # ALFRED evaluators
 │   │   ├── alfred_evaluator.py # LLM-based evaluation
+│   │   ├── alfred_task_planner.py # Skill set generation (generic + instance-aware)
 │   │   ├── gt_evaluator.py     # Ground-truth plan evaluation
 │   │   ├── gt_report.py        # Failure categorization & report generation
-│   │   ├── thor_connector.py   # AI2-THOR simulator interface
-│   │   └── utils.py            # Shared utilities (load_task_json, etc.)
+│   │   ├── thor_connector.py   # AI2-THOR simulator interface & action primitives
+│   │   └── utils.py            # Shared utilities (load_task_json, name conversion)
 │   └── wah/                    # Watch-And-Help evaluator
 ├── conf/                       # Hydra configurations
 │   ├── config_alfred.yaml      # LLM-based ALFRED evaluation
 │   ├── config_alfred_gt.yaml   # Ground-truth plan evaluation
-│   └── config_wah.yaml         # Watch-And-Help evaluation
-├── tests/                      # Test suite
-│   ├── test_gt_evaluator.py    # GT evaluator unit tests (24 tests)
-│   └── test_gt_report.py       # GT report unit tests (23 tests)
+│   ├── config_wah.yaml         # Watch-And-Help evaluation
+│   └── config_wah_headless.yaml # WAH headless server setup
+├── tests/                      # Test suite (no simulator required)
+│   ├── test_instance_actions.py    # Instance-specific action tests (53 tests)
+│   ├── test_gt_evaluator.py        # GT evaluator unit tests (24 tests)
+│   ├── test_gt_report.py           # GT report unit tests (23 tests)
+│   ├── test_ai2thor_compatibility.py # AI2-THOR 5.x compatibility tests
+│   └── test_llm_providers.py       # LLM provider unit tests
+├── resource/                   # Prompt examples & ground-truth data
 ├── alfred/                     # ALFRED environment & dataset
 ├── virtualhome/                # VirtualHome environment
 └── dataset/                    # WAH-NL dataset

@@ -34,6 +34,7 @@ class ThorConnector(ThorEnv):
         self.reachable_positions, self.reachable_position_kdtree = None, None
         self.sliced = False
         self._obj_registry = {}  # AI2-THOR objectId -> readable name
+        self._obj_registry_by_name = {}  # readable name -> AI2-THOR objectId
 
     def restore_scene(self, object_poses, object_toggles, dirty_and_empty):
         super().restore_scene(object_poses, object_toggles, dirty_and_empty)
@@ -44,14 +45,39 @@ class ThorConnector(ThorEnv):
     def _build_object_registry(self):
         """Build a mapping from AI2-THOR objectIds to human-readable names."""
         self._obj_registry = {}
+        self._obj_registry_by_name = {}
         type_counts = {}
         for obj in sorted(self.last_event.metadata['objects'], key=lambda o: o['objectId']):
             obj_id = obj['objectId']
             obj_type = obj_id.split('|')[0]
             type_counts[obj_type] = type_counts.get(obj_type, 0) + 1
-            self._obj_registry[obj_id] = f"{obj_type}_{type_counts[obj_type]}"
+            readable_name = f"{obj_type}_{type_counts[obj_type]}"
+            self._obj_registry[obj_id] = readable_name
+            self._obj_registry_by_name[readable_name] = obj_id
         log.info(f"      Object registry: {len(self._obj_registry)} objects "
                  f"({len(type_counts)} types)")
+
+    @staticmethod
+    def _is_instance_id(token: str) -> bool:
+        """Check if a token matches the instance ID pattern (e.g., Apple_1, DeskLamp_02)."""
+        return bool(re.match(r'^[A-Z][a-zA-Z]*_\d+$', token))
+
+    @staticmethod
+    def _normalize_instance_id(instance_id: str) -> str:
+        """Normalize instance ID by stripping leading zeros from numeric suffix."""
+        parts = instance_id.rsplit('_', 1)
+        if len(parts) == 2:
+            return f"{parts[0]}_{parts[1].lstrip('0') or '0'}"
+        return instance_id
+
+    def _resolve_instance_id(self, instance_id: str):
+        """Resolve a human-readable instance ID to (thor_object_id, object_type) or None."""
+        normalized = self._normalize_instance_id(instance_id)
+        thor_id = self._obj_registry_by_name.get(normalized)
+        if thor_id is None:
+            return None
+        obj_type = thor_id.split('|')[0]
+        return thor_id, obj_type
 
     def readable_id(self, obj_id):
         """Return human-readable name for an AI2-THOR objectId."""
@@ -94,6 +120,19 @@ class ThorConnector(ThorEnv):
         selected = i[nth - 1]
         return self.reachable_positions[selected]
 
+    def _dispatch_instance_or_generic(self, obj_name, action_method, **kwargs):
+        """Dispatch to action method with instance ID resolution or generic flow."""
+        if self._is_instance_id(obj_name):
+            resolved = self._resolve_instance_id(obj_name)
+            if resolved is None:
+                log.info(f"      [instance] '{obj_name}' not found in registry")
+                return f"Instance ID '{obj_name}' not found in object registry"
+            thor_id, obj_type = resolved
+            log.info(f"      [instance] {obj_name} -> {thor_id}")
+            return action_method(obj_type, target_obj_id=thor_id, **kwargs)
+        else:
+            return action_method(natural_word_to_ithor_name(obj_name), **kwargs)
+
     def llm_skill_interact(self, instruction: str):
         if instruction.startswith("put down ") or instruction.startswith("open "):
             pass
@@ -101,24 +140,38 @@ class ThorConnector(ThorEnv):
             self.cur_receptacle = None
 
         if instruction.startswith("find "):
-            obj_name = instruction.replace('find a ', '').replace('find an ', '')
+            obj_name = instruction.replace('find a ', '').replace('find an ', '').replace('find ', '')
             self.cur_receptacle = obj_name
-            ret = self.nav_obj(natural_word_to_ithor_name(obj_name), self.sliced)
+            if self._is_instance_id(obj_name):
+                resolved = self._resolve_instance_id(obj_name)
+                if resolved is None:
+                    log.info(f"      [instance] '{obj_name}' not found in registry")
+                    ret = f"Instance ID '{obj_name}' not found in object registry"
+                else:
+                    thor_id, obj_type = resolved
+                    log.info(f"      [instance] {obj_name} -> {thor_id}")
+                    ret = self.nav_obj(obj_type, self.sliced, target_obj_id=thor_id)
+            else:
+                ret = self.nav_obj(natural_word_to_ithor_name(obj_name), self.sliced)
         elif instruction.startswith("pick up "):
-            obj_name = instruction.replace('pick up the ', '')
-            ret = self.pick(natural_word_to_ithor_name(obj_name))
+            obj_name = instruction.replace('pick up the ', '').replace('pick up ', '')
+            ret = self._dispatch_instance_or_generic(obj_name, self.pick)
         elif instruction.startswith("put down "):
-            # m = re.match(r'put down (.+) on (.+)', instruction)
-            # obj = m.group(1).replace('the ', '')
-            # receptacle = m.group(2).replace('the ', '')
-
             if self.cur_receptacle is None:
                 ret = self.drop()
             else:
                 m = re.match(r'put down (.+)', instruction)
                 obj = m.group(1).replace('the ', '')
                 receptacle = self.cur_receptacle
-                ret = self.put(natural_word_to_ithor_name(receptacle))
+                if self._is_instance_id(receptacle):
+                    resolved = self._resolve_instance_id(receptacle)
+                    if resolved is None:
+                        ret = f"Instance ID '{receptacle}' not found in object registry"
+                    else:
+                        thor_id, obj_type = resolved
+                        ret = self.put(obj_type, target_obj_id=thor_id)
+                else:
+                    ret = self.put(natural_word_to_ithor_name(receptacle))
 
             if len(ret) > 16:
                 # if put down failed, then drop the object
@@ -126,20 +179,20 @@ class ThorConnector(ThorEnv):
                 self.last_event.metadata['lastActionSuccess'] = False
 
         elif instruction.startswith("open "):
-            obj_name = instruction.replace('open the ', '')
-            ret = self.open(natural_word_to_ithor_name(obj_name))
+            obj_name = instruction.replace('open the ', '').replace('open ', '')
+            ret = self._dispatch_instance_or_generic(obj_name, self.open)
         elif instruction.startswith("close "):
-            obj_name = instruction.replace('close the ', '')
-            ret = self.close(natural_word_to_ithor_name(obj_name))
+            obj_name = instruction.replace('close the ', '').replace('close ', '')
+            ret = self._dispatch_instance_or_generic(obj_name, self.close)
         elif instruction.startswith("turn on "):
-            obj_name = instruction.replace('turn on the ', '')
-            ret = self.toggleon(natural_word_to_ithor_name(obj_name))
+            obj_name = instruction.replace('turn on the ', '').replace('turn on ', '')
+            ret = self._dispatch_instance_or_generic(obj_name, self.toggleon)
         elif instruction.startswith("turn off "):
-            obj_name = instruction.replace('turn off the ', '')
-            ret = self.toggleoff(natural_word_to_ithor_name(obj_name))
+            obj_name = instruction.replace('turn off the ', '').replace('turn off ', '')
+            ret = self._dispatch_instance_or_generic(obj_name, self.toggleoff)
         elif instruction.startswith("slice "):
-            obj_name = instruction.replace('slice the ', '')
-            ret = self.slice(natural_word_to_ithor_name(obj_name))
+            obj_name = instruction.replace('slice the ', '').replace('slice ', '')
+            ret = self._dispatch_instance_or_generic(obj_name, self.slice)
             self.sliced = True
         elif instruction.startswith("drop"):
             ret = self.drop()
@@ -176,15 +229,26 @@ class ThorConnector(ThorEnv):
         x = math.radians(x)
         y = math.radians(y)
         return math.degrees(math.atan2(math.sin(x - y), math.cos(x - y)))
-    def nav_obj(self, target_obj: str, prefer_sliced=False):
+    def nav_obj(self, target_obj: str, prefer_sliced=False, target_obj_id=None):
         objects = self.last_event.metadata['objects']
         ret_msg = ''
-        log.info(f'      [nav_obj] target={target_obj}')
+        log.info(f'      [nav_obj] target={target_obj}' + (f', target_obj_id={target_obj_id}' if target_obj_id else ''))
 
-        # get the object location
-        obj_id, obj_data = self.get_obj_id_from_name(target_obj, priority_in_visibility=True, priority_sliced=prefer_sliced)
-        if obj_id:
-            log.info(f'      [nav_obj] selected {self.readable_id(obj_id)}, visible={obj_data["visible"]}, distance={obj_data["distance"]:.2f}')
+        if target_obj_id is not None:
+            # Instance-specific: use provided objectId directly
+            obj_id = target_obj_id
+            obj_data = None
+            for o in objects:
+                if o['objectId'] == target_obj_id:
+                    obj_data = o
+                    break
+            if obj_data:
+                log.info(f'      [nav_obj] selected {self.readable_id(obj_id)}, visible={obj_data["visible"]}, distance={obj_data["distance"]:.2f}')
+        else:
+            # Generic: find closest matching object by type
+            obj_id, obj_data = self.get_obj_id_from_name(target_obj, priority_in_visibility=True, priority_sliced=prefer_sliced)
+            if obj_id:
+                log.info(f'      [nav_obj] selected {self.readable_id(obj_id)}, visible={obj_data["visible"]}, distance={obj_data["distance"]:.2f}')
 
         # find object index from id
         obj_idx = -1
@@ -267,14 +331,30 @@ class ThorConnector(ThorEnv):
             else:
                 # Verify target object is visible after navigation
                 # If not visible, try rotating to find it
-                obj_id_check, obj_data_check = self.get_obj_id_from_name(target_obj, priority_sliced=prefer_sliced)
+                if target_obj_id is not None:
+                    # Instance path: look up specific object by ID
+                    obj_data_check = None
+                    for o in self.last_event.metadata['objects']:
+                        if o['objectId'] == target_obj_id:
+                            obj_data_check = o
+                            break
+                else:
+                    _, obj_data_check = self.get_obj_id_from_name(target_obj, priority_sliced=prefer_sliced)
+
                 if obj_data_check and not obj_data_check['visible']:
                     log.info(f'      [nav_obj] {target_obj} not visible, scanning...')
                     found = False
                     # Fine-grained horizontal sweep: 12x30° = 360°
                     for rotation_attempt in range(12):
                         super().step(dict(action="RotateRight", degrees=30))
-                        obj_id_check, obj_data_check = self.get_obj_id_from_name(target_obj, priority_sliced=prefer_sliced)
+                        if target_obj_id is not None:
+                            obj_data_check = None
+                            for o in self.last_event.metadata['objects']:
+                                if o['objectId'] == target_obj_id:
+                                    obj_data_check = o
+                                    break
+                        else:
+                            _, obj_data_check = self.get_obj_id_from_name(target_obj, priority_sliced=prefer_sliced)
                         if obj_data_check and obj_data_check['visible']:
                             log.info(f'      [nav_obj] {target_obj} visible after {(rotation_attempt+1)*30}deg rotation')
                             found = True
@@ -284,7 +364,14 @@ class ThorConnector(ThorEnv):
                         # Try vertical camera adjustments at current rotation
                         for look_action in ["LookUp", "LookDown", "LookDown"]:
                             super().step(dict(action=look_action))
-                            obj_id_check, obj_data_check = self.get_obj_id_from_name(target_obj, priority_sliced=prefer_sliced)
+                            if target_obj_id is not None:
+                                obj_data_check = None
+                                for o in self.last_event.metadata['objects']:
+                                    if o['objectId'] == target_obj_id:
+                                        obj_data_check = o
+                                        break
+                            else:
+                                _, obj_data_check = self.get_obj_id_from_name(target_obj, priority_sliced=prefer_sliced)
                             if obj_data_check and obj_data_check['visible']:
                                 log.info(f'      [nav_obj] {target_obj} visible after camera tilt')
                                 found = True
@@ -342,8 +429,16 @@ class ThorConnector(ThorEnv):
 
         return obj_id, obj_data
 
-    def pick(self, obj_name):
-        obj_id, obj_data = self.get_obj_id_from_name(obj_name, only_pickupable=True, priority_in_visibility=True, priority_sliced=self.sliced)
+    def pick(self, obj_name, target_obj_id=None):
+        if target_obj_id is not None:
+            obj_id = target_obj_id
+            obj_data = None
+            for o in self.last_event.metadata['objects']:
+                if o['objectId'] == target_obj_id:
+                    obj_data = o
+                    break
+        else:
+            obj_id, obj_data = self.get_obj_id_from_name(obj_name, only_pickupable=True, priority_in_visibility=True, priority_sliced=self.sliced)
         ret_msg = ''
         log.info(f'      [pick] target={obj_name}, obj={self.readable_id(obj_id)}')
 
@@ -411,7 +506,7 @@ class ThorConnector(ThorEnv):
 
         return ret_msg
 
-    def put(self, receptacle_name):
+    def put(self, receptacle_name, target_obj_id=None):
         # assume the agent always put the object currently holding
         ret_msg = ''
 
@@ -427,19 +522,23 @@ class ThorConnector(ThorEnv):
         for k in range(2):  # try closest and next closest one
             for j in range(7):  # move/look around or rotate obj
                 for i in range(2):  # try inherited receptacles too (e.g., sink basin, bath basin)
-                    if k == 1 and exclude_obj_id is None:
+                    if target_obj_id is not None:
+                        # Instance-specific: use provided receptacle objectId directly
+                        recep_id = target_obj_id
+                    elif k == 1 and exclude_obj_id is None:
                         exclude_obj_id = last_recep_id  # previous recep id
 
-                    if i == 0:
-                        # Prioritize open receptacles for openable containers (e.g., cabinet, fridge)
-                        recep_id, _ = self.get_obj_id_from_name(receptacle_name, exclude_obj_id=exclude_obj_id, only_open_receptacles=True)
-                        # If no open receptacle found, try any receptacle (will fail but gives better error message)
-                        if not recep_id:
-                            recep_id, _ = self.get_obj_id_from_name(receptacle_name, exclude_obj_id=exclude_obj_id)
-                    else:
-                        recep_id, _ = self.get_obj_id_from_name(receptacle_name, get_inherited=True, exclude_obj_id=exclude_obj_id, only_open_receptacles=True)
-                        if not recep_id:
-                            recep_id, _ = self.get_obj_id_from_name(receptacle_name, get_inherited=True, exclude_obj_id=exclude_obj_id)
+                    if target_obj_id is None:
+                        if i == 0:
+                            # Prioritize open receptacles for openable containers (e.g., cabinet, fridge)
+                            recep_id, _ = self.get_obj_id_from_name(receptacle_name, exclude_obj_id=exclude_obj_id, only_open_receptacles=True)
+                            # If no open receptacle found, try any receptacle (will fail but gives better error message)
+                            if not recep_id:
+                                recep_id, _ = self.get_obj_id_from_name(receptacle_name, exclude_obj_id=exclude_obj_id)
+                        else:
+                            recep_id, _ = self.get_obj_id_from_name(receptacle_name, get_inherited=True, exclude_obj_id=exclude_obj_id, only_open_receptacles=True)
+                            if not recep_id:
+                                recep_id, _ = self.get_obj_id_from_name(receptacle_name, get_inherited=True, exclude_obj_id=exclude_obj_id)
 
                     if not recep_id:
                         ret_msg = f'Cannot find {receptacle_name}'
@@ -519,10 +618,13 @@ class ThorConnector(ThorEnv):
 
         return ret_msg
 
-    def open(self, obj_name):
+    def open(self, obj_name, target_obj_id=None):
         ret_msg = ''
-        # Require visibility - can only interact with visible objects
-        obj_id, _ = self.get_obj_id_from_name(obj_name, require_visibility=True)
+        if target_obj_id is not None:
+            obj_id = target_obj_id
+        else:
+            # Require visibility - can only interact with visible objects
+            obj_id, _ = self.get_obj_id_from_name(obj_name, require_visibility=True)
         log.info(f'      [open] target={obj_name}, obj={self.readable_id(obj_id)}')
 
         if obj_id is None:
@@ -564,10 +666,13 @@ class ThorConnector(ThorEnv):
 
         return ret_msg
 
-    def close(self, obj_name):
+    def close(self, obj_name, target_obj_id=None):
         ret_msg = ''
-        # Require visibility - can only interact with visible objects
-        obj_id, _ = self.get_obj_id_from_name(obj_name, require_visibility=True)
+        if target_obj_id is not None:
+            obj_id = target_obj_id
+        else:
+            # Require visibility - can only interact with visible objects
+            obj_id, _ = self.get_obj_id_from_name(obj_name, require_visibility=True)
         log.info(f'      [close] target={obj_name}, obj={self.readable_id(obj_id)}')
         if obj_id is None:
             ret_msg = f'Cannot find {obj_name} to close'
@@ -582,10 +687,13 @@ class ThorConnector(ThorEnv):
 
         return ret_msg
 
-    def toggleon(self, obj_name):
+    def toggleon(self, obj_name, target_obj_id=None):
         ret_msg = ''
-        # Require visibility - can only interact with visible objects
-        obj_id, _ = self.get_obj_id_from_name(obj_name, only_toggleable=True, require_visibility=True)
+        if target_obj_id is not None:
+            obj_id = target_obj_id
+        else:
+            # Require visibility - can only interact with visible objects
+            obj_id, _ = self.get_obj_id_from_name(obj_name, only_toggleable=True, require_visibility=True)
         log.info(f'      [toggleon] target={obj_name}, obj={self.readable_id(obj_id)}')
         if obj_id is None:
             ret_msg = f'Cannot find {obj_name} to turn on'
@@ -600,10 +708,13 @@ class ThorConnector(ThorEnv):
 
         return ret_msg
 
-    def toggleoff(self, obj_name):
+    def toggleoff(self, obj_name, target_obj_id=None):
         ret_msg = ''
-        # Require visibility - can only interact with visible objects
-        obj_id, _ = self.get_obj_id_from_name(obj_name, only_toggleable=True, require_visibility=True)
+        if target_obj_id is not None:
+            obj_id = target_obj_id
+        else:
+            # Require visibility - can only interact with visible objects
+            obj_id, _ = self.get_obj_id_from_name(obj_name, only_toggleable=True, require_visibility=True)
         log.info(f'      [toggleoff] target={obj_name}, obj={self.readable_id(obj_id)}')
         if obj_id is None:
             ret_msg = f'Cannot find {obj_name} to turn off'
@@ -618,10 +729,13 @@ class ThorConnector(ThorEnv):
 
         return ret_msg
 
-    def slice(self, obj_name):
+    def slice(self, obj_name, target_obj_id=None):
         ret_msg = ''
-        # Require visibility - can only interact with visible objects
-        obj_id, _ = self.get_obj_id_from_name(obj_name, require_visibility=True)
+        if target_obj_id is not None:
+            obj_id = target_obj_id
+        else:
+            # Require visibility - can only interact with visible objects
+            obj_id, _ = self.get_obj_id_from_name(obj_name, require_visibility=True)
         log.info(f'      [slice] target={obj_name}, obj={self.readable_id(obj_id)}')
         if obj_id is None:
             ret_msg = f'Cannot find {obj_name} to slice'
@@ -633,5 +747,8 @@ class ThorConnector(ThorEnv):
 
             if not self.last_event.metadata['lastActionSuccess']:
                 ret_msg = f"Slice action failed"
+            else:
+                # Rebuild registry to capture newly created sliced instances
+                self._build_object_registry()
 
         return ret_msg
