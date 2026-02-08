@@ -32,6 +32,14 @@ This fork introduces the following improvements over the original repository:
   - Easy extensibility for other OpenAI-compatible providers (Ollama, LM Studio, etc.)
 - **Reasoning model support** - Added `reasoning_effort` parameter for o1/o3/GPT-5.x models
 
+### Ground-Truth Plan Evaluation
+- **New `config_alfred_gt` evaluation mode** — Execute known-correct ground-truth plans from the ALFRED training set in AI2-THOR and produce a structured report:
+  - Configurable evaluation portion (1-100%) with reproducible random selection via seed
+  - Automatic failure categorization (object not found, navigation failure, inventory error, visibility error, interaction failure, exception)
+  - Per-task-type success rate breakdown and aggregate statistics
+  - Machine-readable JSON report alongside human-readable log summary
+  - 47 unit tests covering all evaluation logic (no simulator required to run tests)
+
 ### Other Improvements
 - Modernized Python compatibility (3.8 - 3.12)
 - Environment variable configuration via `.env` file
@@ -213,6 +221,148 @@ sudo python3 alfred/scripts/startx.py 1
 ```
 
 
+## Ground-Truth Plan Evaluation
+
+The ground-truth evaluation mode executes known-correct (ground-truth) action plans from the ALFRED training dataset in the AI2-THOR simulator and produces a detailed report with success rates, failure cause categorization, and per-task-type breakdowns. This is useful for validating that the simulator correctly executes reference plans and for diagnosing systematic failure patterns.
+
+### Data Sources
+
+The evaluator uses two data files:
+
+| File | Contents |
+|------|----------|
+| `resource/alfred_examples_for_prompt.json` | 17,469 ground-truth entries with `task id`, `task type`, `task description`, and `NL steps` (the executable action sequence) |
+| `alfred/data/splits/oct21.json` | Maps task IDs to filesystem paths for loading scene data (object poses, toggles, initial state) |
+
+### Running the Evaluation
+
+**Evaluate 5% of plans (default):**
+```bash
+python src/evaluate.py --config-name=config_alfred_gt
+```
+
+**Evaluate a custom portion:**
+```bash
+# 10% of all ground-truth plans
+python src/evaluate.py --config-name=config_alfred_gt gt.eval_portion_in_percent=10
+
+# All plans (full dataset)
+python src/evaluate.py --config-name=config_alfred_gt gt.eval_portion_in_percent=100
+```
+
+**Reproducible runs with a specific random seed:**
+```bash
+python src/evaluate.py --config-name=config_alfred_gt \
+    gt.eval_portion_in_percent=10 \
+    gt.random_seed=42
+```
+
+Running the same command twice with the same seed and portion will select and evaluate the identical set of tasks.
+
+**On Linux with X11 display:**
+```bash
+python src/evaluate.py --config-name=config_alfred_gt gt.x_display='0'
+```
+
+### Configuration Parameters
+
+All parameters live under the `gt` key in `conf/config_alfred_gt.yaml` and can be overridden from the command line:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `gt.eval_portion_in_percent` | `5` | Percentage of plans to evaluate (must be >0 and <=100) |
+| `gt.random_seed` | `42` | Seed for reproducible random task selection |
+| `gt.gt_data_file` | `resource/alfred_examples_for_prompt.json` | Path to the ground-truth examples file |
+| `gt.x_display` | `'0'` | X11 display number for AI2-THOR (Linux only) |
+
+### Output
+
+Results are saved to `outputs/alfred_gt/{timestamp}/` (Hydra-managed output directory):
+
+| File | Description |
+|------|-------------|
+| `gt_evaluation_report.json` | Full structured report with all results and aggregate statistics |
+| `{trial_id}_{entry_index}.json` | Individual task result with execution details |
+
+### Report Structure
+
+The `gt_evaluation_report.json` contains:
+
+**Top-level fields:**
+- `timestamp` — ISO 8601 timestamp of the run
+- `config` — The evaluation configuration used (portion, seed, data file)
+- `total_evaluated` — Number of plans executed
+- `total_success` / `total_failure` — Count of successes and failures
+- `success_rate` — Overall success rate as a percentage
+
+**Per-task-type breakdown** (`by_task_type`):
+```json
+{
+  "pick_and_place_simple": {"total": 50, "success": 42, "failure": 8, "success_rate": 84.0},
+  "look_at_obj_in_light": {"total": 30, "success": 25, "failure": 5, "success_rate": 83.33}
+}
+```
+
+**Failure category breakdown** (`by_failure_category`):
+```json
+{
+  "object_not_found": 5,
+  "navigation_failure": 3,
+  "interaction_failure": 3,
+  "visibility_error": 1,
+  "inventory_error": 1
+}
+```
+
+**Per-task results** (`results`): Each entry includes the task ID, task type, description, whether it succeeded, the list of executed steps, and — for failures — the step number, action text, error message, and categorized failure reason.
+
+### Failure Categories
+
+Failed plans are automatically categorized based on the simulator error message:
+
+| Category | Meaning | Example Error |
+|----------|---------|---------------|
+| `object_not_found` | Target object not in scene or not locatable | "Cannot find mug" |
+| `navigation_failure` | Agent cannot navigate to target | "Cannot move to mug" |
+| `inventory_error` | Inventory state prevents action | "Robot is not holding any object" |
+| `visibility_error` | Object hidden inside a closed receptacle | "mug is not visible because it is in Fridge" |
+| `interaction_failure` | Simulator action failed despite finding object | "Open action failed" |
+| `exception` | Unexpected Python exception during execution | Any caught Exception |
+| `unknown` | Error doesn't match known patterns | Fallback |
+
+### Example: Interpreting a Failed Task Result
+
+```json
+{
+  "task_id": "trial_T20190907_174127_043461",
+  "task_type": "look_at_obj_in_light",
+  "task_description": "Examine an alarm clock under a desk lamp",
+  "success": false,
+  "executed_steps": ["find an alarm clock", "pick up the alarm clock"],
+  "total_steps": 4,
+  "failure_step": 3,
+  "failure_action": "find a desk lamp",
+  "failure_message": "Cannot find DeskLamp",
+  "failure_category": "object_not_found",
+  "goal_satisfied": false,
+  "scene_name": "FloorPlan301"
+}
+```
+
+This tells you: the plan failed at step 3 ("find a desk lamp") because the DeskLamp object was not found in the scene. Steps 1-2 executed successfully.
+
+### Running Tests
+
+Unit tests for the GT evaluator do not require AI2-THOR and can run anywhere:
+
+```bash
+pytest tests/test_gt_evaluator.py tests/test_gt_report.py -v
+```
+
+This runs 47 tests covering data loading, portion validation, random selection, failure categorization, report generation, and JSON serialization.
+
+---
+
 ## Benchmarking on Watch-And-Help
 
 ### Download the VirtualHome Simulator
@@ -328,16 +478,29 @@ You can find the WAH-NL data, which is our extension of WAH, in `./dataset` fold
 ```
 LLMTaskPlanning/
 ├── src/
+│   ├── evaluate.py             # Main entry point (dispatches by config name)
+│   ├── evaluator.py            # Base Evaluator class
+│   ├── task_planner.py         # Base task planner
 │   ├── llm/                    # LLM provider abstraction
 │   │   ├── base.py             # Abstract base class
 │   │   ├── factory.py          # Provider factory
 │   │   ├── openai_provider.py  # OpenAI implementation
 │   │   └── vllm_provider.py    # vLLM implementation
-│   ├── task_planner.py         # Base task planner
-│   ├── alfred/                 # ALFRED evaluator
+│   ├── alfred/                 # ALFRED evaluators
+│   │   ├── alfred_evaluator.py # LLM-based evaluation
+│   │   ├── gt_evaluator.py     # Ground-truth plan evaluation
+│   │   ├── gt_report.py        # Failure categorization & report generation
+│   │   ├── thor_connector.py   # AI2-THOR simulator interface
+│   │   └── utils.py            # Shared utilities (load_task_json, etc.)
 │   └── wah/                    # Watch-And-Help evaluator
 ├── conf/                       # Hydra configurations
-├── alfred/                     # ALFRED environment
+│   ├── config_alfred.yaml      # LLM-based ALFRED evaluation
+│   ├── config_alfred_gt.yaml   # Ground-truth plan evaluation
+│   └── config_wah.yaml         # Watch-And-Help evaluation
+├── tests/                      # Test suite
+│   ├── test_gt_evaluator.py    # GT evaluator unit tests (24 tests)
+│   └── test_gt_report.py       # GT report unit tests (23 tests)
+├── alfred/                     # ALFRED environment & dataset
 ├── virtualhome/                # VirtualHome environment
 └── dataset/                    # WAH-NL dataset
 ```
