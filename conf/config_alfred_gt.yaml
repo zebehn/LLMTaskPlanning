@@ -11,3 +11,4 @@ gt:
   random_seed: 42  # seed for reproducible random selection
   gt_data_file: "resource/alfred_examples_for_prompt.json"
   x_display: '0'
+  trial_id: null  # set to a specific trial ID to evaluate only that task (e.g. trial_T20190907_000245_890595)

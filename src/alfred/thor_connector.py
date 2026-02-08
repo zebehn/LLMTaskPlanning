@@ -33,11 +33,31 @@ class ThorConnector(ThorEnv):
         self.cur_receptacle = None
         self.reachable_positions, self.reachable_position_kdtree = None, None
         self.sliced = False
+        self._obj_registry = {}  # AI2-THOR objectId -> readable name
 
     def restore_scene(self, object_poses, object_toggles, dirty_and_empty):
         super().restore_scene(object_poses, object_toggles, dirty_and_empty)
         self.reachable_positions, self.reachable_position_kdtree = self.get_reachable_positions()
         self.cur_receptacle = None
+        self._build_object_registry()
+
+    def _build_object_registry(self):
+        """Build a mapping from AI2-THOR objectIds to human-readable names."""
+        self._obj_registry = {}
+        type_counts = {}
+        for obj in sorted(self.last_event.metadata['objects'], key=lambda o: o['objectId']):
+            obj_id = obj['objectId']
+            obj_type = obj_id.split('|')[0]
+            type_counts[obj_type] = type_counts.get(obj_type, 0) + 1
+            self._obj_registry[obj_id] = f"{obj_type}_{type_counts[obj_type]}"
+        log.info(f"      Object registry: {len(self._obj_registry)} objects "
+                 f"({len(type_counts)} types)")
+
+    def readable_id(self, obj_id):
+        """Return human-readable name for an AI2-THOR objectId."""
+        if obj_id is None:
+            return "None"
+        return self._obj_registry.get(obj_id, obj_id)
 
     def get_reachable_positions(self):
         free_positions = super().step(dict(action="GetReachablePositions")).metadata["actionReturn"]
@@ -133,9 +153,9 @@ class ThorConnector(ThorEnv):
             # Ensure lastActionSuccess reflects the actual failure
             self.last_event.metadata['lastActionSuccess'] = False
             if len(ret) > 0:
-                log.warning(f"Action failed: {ret}")
+                log.info(f"      => FAIL: {ret}")
         else:
-            log.info(f"Action succeeded")
+            log.info("      => ok")
 
         ret_dict = {
             'action': instruction,
@@ -158,12 +178,13 @@ class ThorConnector(ThorEnv):
         return math.degrees(math.atan2(math.sin(x - y), math.cos(x - y)))
     def nav_obj(self, target_obj: str, prefer_sliced=False):
         objects = self.last_event.metadata['objects']
-        action_name = 'object navigation'
         ret_msg = ''
-        log.info(f'{action_name} ({target_obj})')
+        log.info(f'      [nav_obj] target={target_obj}')
 
         # get the object location
         obj_id, obj_data = self.get_obj_id_from_name(target_obj, priority_in_visibility=True, priority_sliced=prefer_sliced)
+        if obj_id:
+            log.info(f'      [nav_obj] selected {self.readable_id(obj_id)}, visible={obj_data["visible"]}, distance={obj_data["distance"]:.2f}')
 
         # find object index from id
         obj_idx = -1
@@ -188,7 +209,7 @@ class ThorConnector(ThorEnv):
 
             # do not move if the object is already visible and close
             if objects[obj_idx]['visible'] and objects[obj_idx]['distance'] < 1.0:
-                log.info('Object is already visible')
+                log.info('      [nav_obj] already visible and close')
                 max_attempts = 0
                 teleport_success = True
 
@@ -233,27 +254,41 @@ class ThorConnector(ThorEnv):
                                   standing=True))
 
                 if not self.last_event.metadata['lastActionSuccess']:
-                    log.warning(
-                        f"TeleportFull action failed: {self.last_event.metadata['errorMessage']}, trying again...")
+                    log.debug(
+                        f"TeleportFull attempt {i+1}: {self.last_event.metadata['errorMessage']}")
                 else:
                     teleport_success = True
+                    log.info(f'      [nav_obj] TeleportFull ok (attempt {i+1})')
                     break
 
             if not teleport_success:
+                log.info(f'      [nav_obj] TeleportFull failed after {max_attempts} attempts')
                 ret_msg = f'Cannot move to {target_obj}'
             else:
                 # Verify target object is visible after navigation
                 # If not visible, try rotating to find it
                 obj_id_check, obj_data_check = self.get_obj_id_from_name(target_obj, priority_sliced=prefer_sliced)
                 if obj_data_check and not obj_data_check['visible']:
-                    log.info(f'{target_obj} not visible after teleport, rotating to find it...')
-                    # Try rotating in 90-degree increments to find the object
-                    for rotation_attempt in range(4):
-                        super().step(dict(action="RotateRight", degrees=90))
+                    log.info(f'      [nav_obj] {target_obj} not visible, scanning...')
+                    found = False
+                    # Fine-grained horizontal sweep: 12x30° = 360°
+                    for rotation_attempt in range(12):
+                        super().step(dict(action="RotateRight", degrees=30))
                         obj_id_check, obj_data_check = self.get_obj_id_from_name(target_obj, priority_sliced=prefer_sliced)
                         if obj_data_check and obj_data_check['visible']:
-                            log.info(f'{target_obj} now visible after rotation')
+                            log.info(f'      [nav_obj] {target_obj} visible after {(rotation_attempt+1)*30}deg rotation')
+                            found = True
                             break
+
+                    if not found:
+                        # Try vertical camera adjustments at current rotation
+                        for look_action in ["LookUp", "LookDown", "LookDown"]:
+                            super().step(dict(action=look_action))
+                            obj_id_check, obj_data_check = self.get_obj_id_from_name(target_obj, priority_sliced=prefer_sliced)
+                            if obj_data_check and obj_data_check['visible']:
+                                log.info(f'      [nav_obj] {target_obj} visible after camera tilt')
+                                found = True
+                                break
 
         return ret_msg
 
@@ -310,21 +345,50 @@ class ThorConnector(ThorEnv):
     def pick(self, obj_name):
         obj_id, obj_data = self.get_obj_id_from_name(obj_name, only_pickupable=True, priority_in_visibility=True, priority_sliced=self.sliced)
         ret_msg = ''
-        log.info(f'pick {obj_id}')
+        log.info(f'      [pick] target={obj_name}, obj={self.readable_id(obj_id)}')
 
         if obj_id is None:
             ret_msg = f'Cannot find {obj_name} to pick up'
         else:
             if obj_data['visible'] is False and obj_data['parentReceptacles'] is not None and len(obj_data['parentReceptacles']) > 0:
                 recep_name = obj_data["parentReceptacles"][0].split('|')[0]
-                ret_msg = f'{obj_name} is not visible because it is in {recep_name}'
+                recep_is_open = self.get_object_prop(
+                    obj_data['parentReceptacles'][0], 'isOpen', self.last_event.metadata)
 
-                # try anyway (will fail if container is closed)
-                super().step(dict(
-                    action="PickupObject",
-                    objectId=obj_id,
-                    forceAction=False
-                ))
+                if recep_is_open:
+                    # Receptacle is open — object should be accessible, just not in camera view.
+                    # Try camera adjustments to bring object into view.
+                    log.info(f'      [pick] {obj_name} not visible in open {recep_name}, adjusting camera')
+                    picked = False
+                    for look_action in ["LookUp", "LookDown", "LookDown"]:
+                        super().step(dict(action=look_action))
+                        super().step(dict(
+                            action="PickupObject",
+                            objectId=obj_id,
+                            forceAction=False
+                        ))
+                        if self.last_event.metadata['lastActionSuccess']:
+                            picked = True
+                            break
+
+                    if not picked:
+                        # Camera adjustments didn't help — force pickup since receptacle is open
+                        log.info(f'      [pick] forcing pickup from open {recep_name}')
+                        super().step(dict(
+                            action="PickupObject",
+                            objectId=obj_id,
+                            forceAction=True
+                        ))
+                        if not self.last_event.metadata['lastActionSuccess']:
+                            ret_msg = f'{obj_name} is not visible because it is in {recep_name}'
+                else:
+                    ret_msg = f'{obj_name} is not visible because it is in {recep_name}'
+                    # try anyway (will fail if container is closed)
+                    super().step(dict(
+                        action="PickupObject",
+                        objectId=obj_id,
+                        forceAction=False
+                    ))
             else:
                 super().step(dict(
                     action="PickupObject",
@@ -343,6 +407,7 @@ class ThorConnector(ThorEnv):
 
             if self.last_event.metadata['lastActionSuccess']:
                 ret_msg = ''
+                log.info('      [pick] PickupObject -> ok')
 
         return ret_msg
 
@@ -380,7 +445,7 @@ class ThorConnector(ThorEnv):
                         ret_msg = f'Cannot find {receptacle_name}'
                         continue
 
-                    log.info(f'put {holding_obj_id} on {recep_id}')
+                    log.info(f'      [put] {self.readable_id(holding_obj_id)} -> {self.readable_id(recep_id)}')
 
                     # look up (put action fails when a receptacle is not visible)
                     if j == 1:
@@ -422,9 +487,10 @@ class ThorConnector(ThorEnv):
                     last_recep_id = recep_id
 
                     if not self.last_event.metadata['lastActionSuccess']:
-                        log.warning(f"PutObject action failed: {self.last_event.metadata['errorMessage']}, trying again...")
+                        log.debug(f"PutObject attempt failed: {self.last_event.metadata['errorMessage']}")
                         ret_msg = f'Putting the object on {receptacle_name} failed'
                     else:
+                        log.info('      [put] PutObject ok')
                         ret_msg = ''
                         halt = True
                         break
@@ -436,7 +502,7 @@ class ThorConnector(ThorEnv):
         return ret_msg
 
     def drop(self):
-        log.info(f'drop')
+        log.info('      [drop] DropHandObject')
         ret_msg = ''
         super().step(dict(
             action="DropHandObject",
@@ -454,10 +520,10 @@ class ThorConnector(ThorEnv):
         return ret_msg
 
     def open(self, obj_name):
-        log.info(f'open {obj_name}')
         ret_msg = ''
         # Require visibility - can only interact with visible objects
         obj_id, _ = self.get_obj_id_from_name(obj_name, require_visibility=True)
+        log.info(f'      [open] target={obj_name}, obj={self.readable_id(obj_id)}')
 
         if obj_id is None:
             ret_msg = f'Cannot find {obj_name} to open'
@@ -469,40 +535,40 @@ class ThorConnector(ThorEnv):
                 ))
 
                 if not self.last_event.metadata['lastActionSuccess']:
-                    log.warning(
-                        f"OpenObject action failed (attempt {i+1}/4): {self.last_event.metadata['errorMessage']}")
+                    log.debug(
+                        f"OpenObject attempt {i+1}/4: {self.last_event.metadata['errorMessage']}")
                     ret_msg = f"Open action failed"
 
                     # move around to avoid self-collision and retry
                     if i == 0:
-                        log.info("Moving backward and trying again...")
+                        log.debug("Moving backward and trying again...")
                         super().step(dict(action="MoveBack"))
                     elif i == 1:
-                        log.info("Moving backward-right and trying again...")
+                        log.debug("Moving backward-right and trying again...")
                         super().step(dict(action="MoveBack"))
                         super().step(dict(action="MoveRight"))
                     elif i == 2:
-                        log.info("Moving left and trying again...")
+                        log.debug("Moving left and trying again...")
                         super().step(dict(action="MoveLeft"))
                         super().step(dict(action="MoveLeft"))
                     # i == 3: no more retries
                 else:
                     if i > 0:
-                        log.info(f"OpenObject succeeded on retry attempt {i+1}")
+                        log.info(f"      [open] OpenObject ok (retry {i+1})")
                     ret_msg = ''
                     break
 
             # Log final result
             if ret_msg:
-                log.warning(f"OpenObject failed after all {i+1} attempts")
+                log.debug(f"OpenObject failed after all {i+1} attempts")
 
         return ret_msg
 
     def close(self, obj_name):
-        log.info(f'close {obj_name}')
         ret_msg = ''
         # Require visibility - can only interact with visible objects
         obj_id, _ = self.get_obj_id_from_name(obj_name, require_visibility=True)
+        log.info(f'      [close] target={obj_name}, obj={self.readable_id(obj_id)}')
         if obj_id is None:
             ret_msg = f'Cannot find {obj_name} to close'
         else:
@@ -517,10 +583,10 @@ class ThorConnector(ThorEnv):
         return ret_msg
 
     def toggleon(self, obj_name):
-        log.info(f'toggle on {obj_name}')
         ret_msg = ''
         # Require visibility - can only interact with visible objects
         obj_id, _ = self.get_obj_id_from_name(obj_name, only_toggleable=True, require_visibility=True)
+        log.info(f'      [toggleon] target={obj_name}, obj={self.readable_id(obj_id)}')
         if obj_id is None:
             ret_msg = f'Cannot find {obj_name} to turn on'
         else:
@@ -535,10 +601,10 @@ class ThorConnector(ThorEnv):
         return ret_msg
 
     def toggleoff(self, obj_name):
-        log.info(f'toggle off {obj_name}')
         ret_msg = ''
         # Require visibility - can only interact with visible objects
         obj_id, _ = self.get_obj_id_from_name(obj_name, only_toggleable=True, require_visibility=True)
+        log.info(f'      [toggleoff] target={obj_name}, obj={self.readable_id(obj_id)}')
         if obj_id is None:
             ret_msg = f'Cannot find {obj_name} to turn off'
         else:
@@ -553,10 +619,10 @@ class ThorConnector(ThorEnv):
         return ret_msg
 
     def slice(self, obj_name):
-        log.info(f'slice {obj_name}')
         ret_msg = ''
         # Require visibility - can only interact with visible objects
         obj_id, _ = self.get_obj_id_from_name(obj_name, require_visibility=True)
+        log.info(f'      [slice] target={obj_name}, obj={self.readable_id(obj_id)}')
         if obj_id is None:
             ret_msg = f'Cannot find {obj_name} to slice'
         else:

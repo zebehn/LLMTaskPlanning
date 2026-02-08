@@ -168,19 +168,23 @@ class GroundTruthEvaluator(Evaluator):
         self.portion = gt_cfg.eval_portion_in_percent
         self.seed = gt_cfg.random_seed
         self.x_display = gt_cfg.x_display
+        self.trial_id = gt_cfg.get("trial_id", None)
         self.save_path = cfg.out_dir
-
-        log.info(f"GT Evaluator config: portion={self.portion}%, seed={self.seed}, data={self.gt_data_file}")
-
-        # Validate
-        validate_portion(self.portion)
 
         # Load data
         self.all_entries = load_gt_entries(self.gt_data_file)
         self.split_index = build_split_index()
 
-        # Select subset
-        self.selected_entries = select_entries(self.all_entries, self.portion, self.seed)
+        # Select entries: specific trial or random subset
+        if self.trial_id:
+            log.info(f"GT Evaluator: single trial mode, trial_id={self.trial_id}")
+            self.selected_entries = [e for e in self.all_entries if e.task_id == self.trial_id]
+            if not self.selected_entries:
+                raise ValueError(f"Trial ID '{self.trial_id}' not found in GT data file")
+        else:
+            log.info(f"GT Evaluator config: portion={self.portion}%, seed={self.seed}, data={self.gt_data_file}")
+            validate_portion(self.portion)
+            self.selected_entries = select_entries(self.all_entries, self.portion, self.seed)
 
     def evaluate(self):
         """Run GT evaluation on selected entries."""
@@ -272,14 +276,19 @@ class GroundTruthEvaluator(Evaluator):
             env.step(dict(traj_data["scene"]["init_action"]))
             env.set_task(traj_data, model_args, reward_type="dense")
 
-            log.info(f"Evaluating {task_id} in {scene_name} ({len(entry.nl_steps)} steps)")
+            log.info(f"--- Task {task_id} [{entry.task_type}] in {scene_name} ---")
+            log.info(f"  Instruction: {entry.task_description}")
+            log.info(f"  GT plan ({len(entry.nl_steps)} steps):")
+            for i, s in enumerate(entry.nl_steps):
+                log.info(f"    {i + 1}. {s}")
 
             # Execute NL steps
             for step_idx, step_text in enumerate(entry.nl_steps):
+                log.info(f"  Step [{step_idx + 1}/{len(entry.nl_steps)}] {step_text}")
                 try:
                     action_ret = env.llm_skill_interact(step_text)
                 except Exception as e:
-                    log.warning(f"Exception during step {step_idx + 1}: {e}")
+                    log.info(f"    -> EXCEPTION: {e}")
                     return TaskResult(
                         task_id=task_id,
                         task_type=entry.task_type,
@@ -300,7 +309,7 @@ class GroundTruthEvaluator(Evaluator):
 
                 if not action_ret["success"]:
                     msg = action_ret.get("message", "")
-                    log.warning(f"Step {step_idx + 1} failed: {msg}")
+                    log.info(f"    -> step FAILED: {msg}")
                     return TaskResult(
                         task_id=task_id,
                         task_type=entry.task_type,
@@ -318,11 +327,17 @@ class GroundTruthEvaluator(Evaluator):
                     )
 
                 # Track reward
-                env.get_transition_reward()
+                reward, done = env.get_transition_reward()
+                log.info(f"    -> step OK (reward={reward:.2f}, done={done})")
 
             # All steps executed — check goal
             goal_satisfied = env.get_goal_satisfied()
-            log.info(f"Task {task_id}: all steps executed, goal_satisfied={goal_satisfied}")
+            status = "SUCCESS" if goal_satisfied else "FAIL"
+            log.info(f"  Result: {status} "
+                     f"({len(executed_steps)}/{len(entry.nl_steps)} steps, goal_satisfied={goal_satisfied})")
+
+            if not goal_satisfied:
+                self._log_goal_diagnostics(env)
 
             return TaskResult(
                 task_id=task_id,
@@ -378,3 +393,42 @@ class GroundTruthEvaluator(Evaluator):
         path = os.path.join(self.save_path, f"{filename}.json")
         with open(path, "w") as f:
             json.dump(log_entry, f, indent=2)
+
+    @staticmethod
+    def _log_goal_diagnostics(env):
+        """Log detailed goal condition diagnostics when a task fails."""
+        try:
+            rid = env.readable_id
+            satisfied, total = env.get_goal_conditions_met()
+            log.info(f"  Goal conditions: {satisfied}/{total} met")
+
+            targets = env.task.get_targets()
+            log.info(f"  Targets: object={targets.get('object')}, parent={targets.get('parent')}, "
+                     f"toggle={targets.get('toggle')}, mrecep={targets.get('mrecep')}")
+
+            # Log state tracking sets relevant to the task type
+            if env.heated_objects:
+                log.info(f"  Heated objects: {{{', '.join(rid(o) for o in env.heated_objects)}}}")
+            if env.cooled_objects:
+                log.info(f"  Cooled objects: {{{', '.join(rid(o) for o in env.cooled_objects)}}}")
+            if env.cleaned_objects:
+                log.info(f"  Cleaned objects: {{{', '.join(rid(o) for o in env.cleaned_objects)}}}")
+
+            # Check if target object is in the target receptacle
+            obj_type = targets.get('object', '')
+            parent_type = targets.get('parent', '')
+            if obj_type and parent_type:
+                objects = env.last_event.metadata['objects']
+                pickupables = [o for o in objects if obj_type in o.get('objectType', '') and o.get('pickupable')]
+                receptacles = [o for o in objects if parent_type in o.get('objectType', '') and o.get('receptacle')]
+                for p in pickupables:
+                    in_recep = any(
+                        r.get('receptacleObjectIds') and p['objectId'] in r['receptacleObjectIds']
+                        for r in receptacles
+                    )
+                    log.info(f"  {rid(p['objectId'])}: in_{parent_type}={in_recep}, "
+                             f"heated={'yes' if p['objectId'] in env.heated_objects else 'no'}, "
+                             f"cooled={'yes' if p['objectId'] in env.cooled_objects else 'no'}, "
+                             f"cleaned={'yes' if p['objectId'] in env.cleaned_objects else 'no'}")
+        except Exception as e:
+            log.warning(f"  Could not retrieve goal diagnostics: {e}")
