@@ -47,6 +47,15 @@ This fork introduces the following improvements over the original repository:
 - **Instance-aware skill set generation** provides LLM planners with instance-specific action candidates from live scene state
 - 53 unit tests covering detection, navigation, manipulation, skill generation, backward compatibility, and edge cases
 
+### ReAct-Based Task Planner
+- **New `config_alfred_react` evaluation mode** — Implements the ReAct paradigm (Yao et al., ICLR 2023) that interleaves Thought-Action-Observation steps using free-form LLM generation:
+  - **Multi-turn conversation format** — Each Think+Act is an assistant message, each Obs is a user message, preventing hallucinated multi-step trajectories
+  - **Failure-resilient loop** — Failed actions become observations that inform the next reasoning step (does NOT stop on failure like the base evaluator)
+  - **7 few-shot examples** covering all ALFRED task types: simple pick-and-place, clean, heat, cool, examine, slice, and movable receptacle
+  - Full reasoning trace recorded per task (thought, action, observation, success for each step)
+  - Per-task-type success rate breakdown and aggregate statistics saved as `react_summary.json`
+  - 27 unit tests covering output parsing, observation construction, evaluation loop, and config dispatch
+
 ### Other Improvements
 - Modernized Python compatibility (3.8 - 3.12)
 - Environment variable configuration via `.env` file
@@ -379,6 +388,124 @@ This runs 47 tests covering data loading, portion validation, random selection, 
 
 ---
 
+## ReAct Evaluation
+
+The ReAct evaluation mode implements the ReAct paradigm (Yao et al., ICLR 2023) that interleaves LLM-generated Thought-Action-Observation steps in a closed loop. Unlike the base evaluator that generates a complete plan upfront, the ReAct planner reasons one step at a time, observes the result, and adapts.
+
+### How It Works
+
+1. The LLM receives a system prompt, few-shot examples, and the task instruction
+2. At each step, the LLM generates a `Think:` (reasoning) and `Act:` (action) response
+3. The action is executed in AI2-THOR and the result becomes an `Obs:` (observation)
+4. The full history is fed back as a multi-turn conversation for the next step
+5. The loop continues until the LLM outputs `done` or max steps is reached
+
+The multi-turn conversation format (each Think+Act as an assistant message, each Obs as a user message) prevents the LLM from hallucinating future observation-action sequences.
+
+### Running the Evaluation
+
+**Evaluate 5% of valid_seen tasks (default):**
+```bash
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/evaluate.py --config-name=config_alfred_react
+```
+
+**Evaluate a custom portion:**
+```bash
+# 10% of valid_seen tasks
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/evaluate.py --config-name=config_alfred_react \
+    alfred.eval_portion_in_percent=10
+
+# Different eval set
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/evaluate.py --config-name=config_alfred_react \
+    alfred.eval_set=valid_unseen
+```
+
+**With a different model:**
+```bash
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/evaluate.py --config-name=config_alfred_react \
+    planner.model_name=gpt-4-turbo
+```
+
+### Configuration Parameters
+
+All parameters live in `conf/config_alfred_react.yaml` and can be overridden from the command line:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `planner.provider` | `openai` | LLM provider (openai, vllm, etc.) |
+| `planner.model_name` | `gpt-4` | Model to use for reasoning |
+| `planner.max_steps` | `25` | Maximum Think-Act-Obs cycles per task |
+| `planner.temperature` | `0.0` | Sampling temperature (0.0 = deterministic) |
+| `planner.max_tokens` | `1024` | Max tokens per LLM response |
+| `prompt.react_system_prompt` | `src/prompts/templates/react_system.txt` | System prompt file |
+| `prompt.react_few_shot_examples` | `src/prompts/templates/react_few_shot_examples.txt` | Few-shot examples file |
+| `alfred.eval_set` | `valid_seen` | Evaluation split (valid_seen or valid_unseen) |
+| `alfred.eval_portion_in_percent` | `5` | Percentage of tasks to evaluate (1-100) |
+| `alfred.random_seed_for_eval_subset` | `1` | Seed for reproducible task selection |
+| `alfred.x_display` | `'0'` | X11 display number (Linux only) |
+
+### Output
+
+Results are saved to `outputs/alfred_react/{timestamp}/` (Hydra-managed output directory):
+
+| File | Description |
+|------|-------------|
+| `react_summary.json` | Aggregate statistics: success rate, average steps, per-task-type breakdown |
+| `{trial_id}.json` | Individual task result with full reasoning trace |
+| `{trial_id}.png` | Composite image of annotated frames from the task execution |
+
+### Reasoning Trace Format
+
+Each task result includes a `reasoning_trace` array recording every step:
+
+```json
+{
+  "trial_id": "trial_T20190907_174127_043461",
+  "scene": "FloorPlan1",
+  "task_type": "pick_and_place_simple",
+  "instruction": "Put a plate in a cabinet.",
+  "success": true,
+  "total_steps": 6,
+  "termination": "done_signal",
+  "reasoning_trace": [
+    {
+      "step": 1,
+      "thought": "I need to find a plate first.",
+      "action": "find a plate",
+      "observation": "Found plate. You are now near the plate on the countertop.",
+      "success": true
+    },
+    {
+      "step": 2,
+      "thought": "I found the plate. Now I need to pick it up.",
+      "action": "pick up the plate",
+      "observation": "You picked up the plate.",
+      "success": true
+    }
+  ]
+}
+```
+
+### Few-Shot Examples
+
+The prompt includes 7 few-shot examples covering all ALFRED task types:
+
+| Example | Task Type | Key Steps |
+|---------|-----------|-----------|
+| Clean lettuce on diningtable | `pick_clean_then_place_in_recep` | find → pick → find sinkbasin → put → faucet on → faucet off → pick → find target → put |
+| Examine pencil under desk lamp | `look_at_obj_in_light` | find → pick → find lamp → turn on |
+| Hot egg in fridge | `pick_heat_then_place_in_recep` | find → pick → find microwave → open → put → close → on → off → open → pick → close → find fridge → open → put |
+| Cooled mug on coffee table | `pick_cool_then_place_in_recep` | find → pick → find fridge → open → put → close → open → pick → close → find target → put |
+| Knife on countertop | `pick_and_place_simple` | find → pick → find target → put |
+| Slice of tomato on countertop | `pick_two_obj_and_place` (slice) | find knife → pick → find tomato → slice → put knife → pick slice → find target → put |
+| Spatula in pan on countertop | `pick_and_place_with_movable_recep` | find spatula → pick → find pan → put in pan → pick pan → find target → put |
+
+### Sequence Diagram
+
+A detailed Mermaid sequence diagram of the ReAct planner flow is available at [`docs/react_sequence_diagram.md`](docs/react_sequence_diagram.md).
+
+---
+
 ## Benchmarking on Watch-And-Help
 
 ### Download the VirtualHome Simulator
@@ -455,6 +582,8 @@ All prompt templates are stored in `src/prompts/templates/`:
 | `step_by_step_format.txt` | Format for initial step-by-step prompt |
 | `step_continuation.txt` | Format for continuing steps |
 | `step_with_failure.txt` | Format for steps that failed |
+| `react_system.txt` | ReAct planner system prompt (actions, format rules, task procedures) |
+| `react_few_shot_examples.txt` | ReAct few-shot examples (7 examples covering all ALFRED task types) |
 
 ### Customization Examples
 
@@ -580,6 +709,7 @@ python src/evaluate.py --config-name=<CONFIG> [OVERRIDES...]
 |------------|------|-------------|
 | `config_alfred` | LLM-based ALFRED | Run an LLM planner on ALFRED tasks in AI2-THOR |
 | `config_alfred_gt` | Ground-truth ALFRED | Execute known-correct plans to validate the simulator |
+| `config_alfred_react` | ReAct ALFRED | Run a ReAct (Thought-Action-Observation) planner on ALFRED tasks |
 | `config_wah` | Watch-And-Help | Run an LLM planner on WAH tasks in VirtualHome |
 | `config_wah_headless` | WAH (headless) | Same as `config_wah` for headless server setups |
 
@@ -668,6 +798,13 @@ python src/evaluate.py --config-name=config_alfred_gt \
 python src/evaluate.py --config-name=config_alfred_gt \
     gt.trial_id=trial_T20190907_174127_043461
 
+# ReAct planner: 5% of valid_seen with GPT-4
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/evaluate.py --config-name=config_alfred_react
+
+# ReAct planner: 10% with GPT-4-turbo
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/evaluate.py --config-name=config_alfred_react \
+    planner.model_name=gpt-4-turbo alfred.eval_portion_in_percent=10
+
 # WAH with GPT-4 and same-task example selection
 python src/evaluate.py --config-name=config_wah \
     planner.provider=openai planner.model_name=gpt-4 \
@@ -689,6 +826,9 @@ pytest tests/test_instance_actions.py -v
 
 # Ground-truth evaluator tests only (47 tests)
 pytest tests/test_gt_evaluator.py tests/test_gt_report.py -v
+
+# ReAct planner tests only (27 tests)
+pytest tests/test_react_planner.py -v
 
 # AI2-THOR compatibility tests only
 pytest tests/test_ai2thor_compatibility.py -v
@@ -722,18 +862,22 @@ LLMTaskPlanning/
 │   │   ├── alfred_task_planner.py # Skill set generation (generic + instance-aware)
 │   │   ├── gt_evaluator.py     # Ground-truth plan evaluation
 │   │   ├── gt_report.py        # Failure categorization & report generation
+│   │   ├── react_evaluator.py  # ReAct evaluation loop (Thought-Action-Observation)
+│   │   ├── react_task_planner.py # ReAct planner (LLM calls, parsing, message building)
 │   │   ├── thor_connector.py   # AI2-THOR simulator interface & action primitives
 │   │   └── utils.py            # Shared utilities (load_task_json, name conversion)
 │   └── wah/                    # Watch-And-Help evaluator
 ├── conf/                       # Hydra configurations
 │   ├── config_alfred.yaml      # LLM-based ALFRED evaluation
 │   ├── config_alfred_gt.yaml   # Ground-truth plan evaluation
+│   ├── config_alfred_react.yaml # ReAct planner evaluation
 │   ├── config_wah.yaml         # Watch-And-Help evaluation
 │   └── config_wah_headless.yaml # WAH headless server setup
 ├── tests/                      # Test suite (no simulator required)
 │   ├── test_instance_actions.py    # Instance-specific action tests (53 tests)
 │   ├── test_gt_evaluator.py        # GT evaluator unit tests (24 tests)
 │   ├── test_gt_report.py           # GT report unit tests (23 tests)
+│   ├── test_react_planner.py       # ReAct planner unit tests (27 tests)
 │   ├── test_ai2thor_compatibility.py # AI2-THOR 5.x compatibility tests
 │   └── test_llm_providers.py       # LLM provider unit tests
 ├── resource/                   # Prompt examples & ground-truth data

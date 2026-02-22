@@ -1,0 +1,26 @@
+name: alfred_react
+
+defaults:
+  - hydra: default.yaml
+  - planner: default.yaml
+  - override hydra/help: custom
+  - _self_
+
+out_dir: ${hydra:run.dir}
+
+planner:
+  provider: "openai"
+  model_name: "gpt-4"
+  max_steps: 25
+  temperature: 0.0
+  max_tokens: 1024
+
+prompt:
+  react_system_prompt: "src/prompts/templates/react_system.txt"
+  react_few_shot_examples: "src/prompts/templates/react_few_shot_examples.txt"
+
+alfred:
+  x_display: '0'
+  eval_set: 'valid_seen'
+  eval_portion_in_percent: 5
+  random_seed_for_eval_subset: 1

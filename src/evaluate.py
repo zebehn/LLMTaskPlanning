@@ -25,6 +25,9 @@ def main(cfg):
         evaluator = AlfredEvaluator(cfg)
     elif cfg.name == 'alfred_gt':
         evaluator = GroundTruthEvaluator(cfg)
+    elif cfg.name == 'alfred_react':
+        from src.alfred.react_evaluator import ReActAlfredEvaluator
+        evaluator = ReActAlfredEvaluator(cfg)
     elif cfg.name == 'wah':
         evaluator = WahEvaluator(cfg)
     else:

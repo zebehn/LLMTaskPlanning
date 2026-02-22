@@ -1,0 +1,218 @@
+Here are examples of how to complete household tasks:
+
+---
+
+Task: Put a clean lettuce in diningtable.
+Think: To solve the task, I need to find a lettuce, pick it up, clean it in a sinkbasin by turning on the faucet, then find the diningtable and put it down. Let me start by finding a lettuce.
+Act: find a lettuce
+Obs: Found lettuce. You are now near the lettuce on the countertop.
+Think: I found the lettuce. Now I need to pick it up.
+Act: pick up the lettuce
+Obs: You picked up the lettuce.
+Think: I have the lettuce. Now I need to clean it at a sinkbasin. Let me find a sinkbasin.
+Act: find a sinkbasin
+Obs: Found sinkbasin. You are now near the sinkbasin.
+Think: I am near the sinkbasin. I should put the lettuce in the sinkbasin and use the faucet to clean it.
+Act: put down the lettuce
+Obs: You put the lettuce in the sinkbasin.
+Think: The lettuce is in the sinkbasin. Now I need to turn on the faucet to clean it.
+Act: turn on the faucet
+Obs: You turned on the faucet.
+Think: The faucet is running and the lettuce is being cleaned. Now I should turn off the faucet.
+Act: turn off the faucet
+Obs: You turned off the faucet.
+Think: The lettuce is now clean. I need to pick it up again.
+Act: pick up the lettuce
+Obs: You picked up the lettuce.
+Think: I have the clean lettuce. Now I need to find the diningtable to place it.
+Act: find a diningtable
+Obs: Found diningtable. You are now near the diningtable.
+Think: I am near the diningtable. I should put down the clean lettuce here.
+Act: put down the lettuce
+Obs: You put the lettuce on the diningtable.
+Think: The clean lettuce is on the diningtable. The task is complete.
+Act: done
+
+---
+
+Task: Examine a pencil under the light of a desk lamp.
+Think: To examine a pencil under a desk lamp, I need to find a pencil, pick it up, find a desk lamp, and turn on the desk lamp. Let me start by finding a pencil.
+Act: find a pencil
+Obs: Found pencil. You are now near the pencil on the desk.
+Think: I found the pencil. Now I need to pick it up.
+Act: pick up the pencil
+Obs: You picked up the pencil.
+Think: I have the pencil. Now I need to find a desk lamp to examine the pencil under it.
+Act: find a desk lamp
+Obs: Found desk lamp. You are now near the desk lamp.
+Think: I am near the desk lamp. I need to turn it on to examine the pencil under its light.
+Act: turn on the desk lamp
+Obs: You turned on the desk lamp.
+Think: The desk lamp is on and I am holding the pencil near it. The task is complete.
+Act: done
+
+---
+
+Task: Put a hot egg in the fridge.
+Think: To put a hot egg in the fridge, I need to find an egg, pick it up, heat it in the microwave, then put it in the fridge. Let me start by finding an egg.
+Act: find a egg
+Obs: Found egg. You are now near the egg on the countertop.
+Think: I found the egg. Now I need to pick it up.
+Act: pick up the egg
+Obs: You picked up the egg.
+Think: I have the egg. Now I need to heat it in the microwave. Let me find the microwave first.
+Act: find a microwave
+Obs: Found microwave. You are now near the microwave.
+Think: I am near the microwave. I need to open it and put the egg inside.
+Act: open the microwave
+Obs: You opened the microwave.
+Think: The microwave is open. Now I can put the egg in.
+Act: put down the egg
+Obs: You put the egg in the microwave.
+Think: The egg is in the microwave. I need to close it and turn it on to heat the egg.
+Act: close the microwave
+Obs: You closed the microwave.
+Think: Now I need to turn on the microwave to heat the egg.
+Act: turn on the microwave
+Obs: You turned on the microwave.
+Think: The egg is being heated. Now I need to turn off the microwave and open it to take the egg out.
+Act: turn off the microwave
+Obs: You turned off the microwave.
+Think: The microwave is off. Now I need to open it to take the egg out.
+Act: open the microwave
+Obs: You opened the microwave.
+Think: The microwave is open. I need to pick up the hot egg.
+Act: pick up the egg
+Obs: You picked up the egg.
+Think: I have the hot egg. I should close the microwave before moving on.
+Act: close the microwave
+Obs: You closed the microwave.
+Think: The microwave is closed. Now I need to put the hot egg in the fridge. Let me find the fridge.
+Act: find a fridge
+Obs: Found fridge. You are now near the fridge.
+Think: I am near the fridge. I need to open it and put the egg inside.
+Act: open the fridge
+Obs: You opened the fridge.
+Think: The fridge is open. Now I can put the hot egg in.
+Act: put down the egg
+Obs: You put the egg in the fridge.
+Think: The hot egg is in the fridge. The task is complete.
+Act: done
+
+---
+
+Task: Put a cooled mug on the coffee table.
+Think: To put a cooled mug on the coffee table, I need to find a mug, pick it up, cool it in the fridge, then put it on the coffee table. Let me start by finding a mug.
+Act: find a mug
+Obs: Found mug. You are now near the mug on the shelf.
+Think: I found the mug. Now I need to pick it up.
+Act: pick up the mug
+Obs: You picked up the mug.
+Think: I have the mug. Now I need to cool it in the fridge. Let me find the fridge.
+Act: find a fridge
+Obs: Found fridge. You are now near the fridge.
+Think: I am near the fridge. I need to open it and put the mug inside to cool it.
+Act: open the fridge
+Obs: You opened the fridge.
+Think: The fridge is open. Now I can put the mug in to cool it.
+Act: put down the mug
+Obs: You put the mug in the fridge.
+Think: The mug is in the fridge cooling. I need to close the fridge and wait, then take the mug out.
+Act: close the fridge
+Obs: You closed the fridge.
+Think: Now I need to open the fridge and take the cooled mug out.
+Act: open the fridge
+Obs: You opened the fridge.
+Think: The fridge is open. I need to pick up the cooled mug.
+Act: pick up the mug
+Obs: You picked up the mug.
+Think: I have the cooled mug. I should close the fridge before moving on.
+Act: close the fridge
+Obs: You closed the fridge.
+Think: The fridge is closed. Now I need to find the coffee table and put the cooled mug there.
+Act: find a coffee table
+Obs: Found coffee table. You are now near the coffee table.
+Think: I am near the coffee table. I should put down the cooled mug here.
+Act: put down the mug
+Obs: You put the mug on the coffee table.
+Think: The cooled mug is on the coffee table. The task is complete.
+Act: done
+
+---
+
+Task: Put a knife on the countertop.
+Think: To put a knife on the countertop, I need to find a knife, pick it up, find the countertop, and put it down. Let me start by finding a knife.
+Act: find a knife
+Obs: Found knife. You are now near the knife on the diningtable.
+Think: I found the knife. Now I need to pick it up.
+Act: pick up the knife
+Obs: You picked up the knife.
+Think: I have the knife. Now I need to find the countertop.
+Act: find a countertop
+Obs: Found countertop. You are now near the countertop.
+Think: I am near the countertop. I should put down the knife here.
+Act: put down the knife
+Obs: You put the knife on the countertop.
+Think: The knife is on the countertop. The task is complete.
+Act: done
+
+---
+
+Task: Put a slice of tomato on the countertop.
+Think: To put a slice of tomato on the countertop, I first need to find a knife to slice the tomato, then find the tomato and slice it, then pick up a slice, find the countertop, and put it down. Let me start by finding a knife.
+Act: find a knife
+Obs: Found knife. You are now near the knife on the countertop.
+Think: I found the knife. I need to pick it up so I can slice the tomato.
+Act: pick up the knife
+Obs: You picked up the knife.
+Think: I have the knife. Now I need to find a tomato to slice.
+Act: find a tomato
+Obs: Found tomato. You are now near the tomato on the diningtable.
+Think: I am near the tomato and I have the knife. I should slice the tomato.
+Act: slice the tomato
+Obs: You sliced the tomato.
+Think: The tomato is sliced. Now I need to put down the knife and pick up a tomato slice.
+Act: put down the knife
+Obs: You put the knife down.
+Think: I put down the knife. Now I need to pick up a slice of the tomato.
+Act: pick up the tomato
+Obs: You picked up the tomato.
+Think: I have a tomato slice. Now I need to find the countertop and put it there.
+Act: find a countertop
+Obs: Found countertop. You are now near the countertop.
+Think: I am near the countertop. I should put down the tomato slice here.
+Act: put down the tomato
+Obs: You put the tomato on the countertop.
+Think: The tomato slice is on the countertop. The task is complete.
+Act: done
+
+---
+
+Task: Put a spatula in a pan on the countertop.
+Think: To put a spatula in a pan on the countertop, I need to find the spatula, pick it up, find a pan, put the spatula in the pan, then pick up the pan and find the countertop to put it there. Let me start by finding a spatula.
+Act: find a spatula
+Obs: Found spatula. You are now near the spatula on the shelf.
+Think: I found the spatula. I need to pick it up.
+Act: pick up the spatula
+Obs: You picked up the spatula.
+Think: I have the spatula. Now I need to find a pan to put it in.
+Act: find a pan
+Obs: Found pan. You are now near the pan on the stoveburner.
+Think: I am near the pan. I should put the spatula in the pan.
+Act: put down the spatula
+Obs: You put the spatula in the pan.
+Think: The spatula is in the pan. Now I need to pick up the pan with the spatula in it.
+Act: pick up the pan
+Obs: You picked up the pan.
+Think: I have the pan with the spatula in it. Now I need to find the countertop and put it there.
+Act: find a countertop
+Obs: Found countertop. You are now near the countertop.
+Think: I am near the countertop. I should put down the pan with the spatula here.
+Act: put down the pan
+Obs: You put the pan on the countertop.
+Think: The pan with the spatula is on the countertop. The task is complete.
+Act: done
+
+---
+
+Now complete the following task:
