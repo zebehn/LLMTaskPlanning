@@ -14,6 +14,20 @@ max_tokens: 500
 # Options: "low" (faster), "medium" (balanced), "high" (thorough but slower)
 reasoning_effort: "low"
 
+# Reasoning Model Detection Prefixes
+# Model names starting with any of these prefixes are treated as reasoning models.
+# OpenAI reasoning models use max_completion_tokens instead of max_tokens.
+# Local providers (Ollama, LM Studio) always use standard params regardless.
+# Add new prefixes here to support future reasoning models without code changes.
+reasoning_model_prefixes:
+  - "gpt-5"
+  - "o1"
+  - "o3"
+  - "o4"
+  - "qwen3"
+  - "glm-"
+  - "kimi-k"
+
 # Task Planning Settings
 max_steps: 25
 random_seed: 0

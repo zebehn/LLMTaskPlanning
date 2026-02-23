@@ -3,10 +3,13 @@ Ollama LLM Provider implementation.
 Ollama provides OpenAI-compatible API for locally served models.
 """
 import os
+import logging
 from openai import OpenAI, APIConnectionError
 from typing import List, Dict, Optional
 
 from .base import LLMProvider, LLMConfig
+
+logger = logging.getLogger(__name__)
 
 
 class OllamaProvider(LLMProvider):
@@ -41,7 +44,19 @@ class OllamaProvider(LLMProvider):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None
     ) -> str:
-        """Generate chat completion using Ollama's OpenAI-compatible API."""
+        """Generate chat completion using Ollama's OpenAI-compatible API.
+
+        Note: Ollama always uses standard parameters (max_tokens + temperature)
+        even for reasoning models. Ollama does not reliably support
+        max_completion_tokens or reasoning_effort.
+        """
+        if self.is_reasoning_model():
+            logger.info(
+                "Reasoning model '%s' detected on Ollama. "
+                "Using standard parameters (max_tokens + temperature) — "
+                "Ollama does not support reasoning-specific parameters.",
+                self.model_name,
+            )
         try:
             response = self.client.chat.completions.create(
                 model=self.model_name,

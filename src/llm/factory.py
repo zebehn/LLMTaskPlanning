@@ -3,7 +3,7 @@ Factory for creating LLM providers.
 Implements the Factory Pattern for instantiating the correct provider based on configuration.
 """
 import os
-from typing import Optional
+from typing import Optional, Tuple
 from dotenv import load_dotenv
 
 from .base import LLMProvider, LLMConfig
@@ -43,19 +43,21 @@ class LLMProviderFactory:
         api_base: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: int = 500,
-        reasoning_effort: Optional[str] = None
+        reasoning_effort: Optional[str] = None,
+        reasoning_model_prefixes: Optional[Tuple[str, ...]] = None
     ) -> LLMProvider:
         """
         Create an LLM provider instance.
 
         Args:
-            provider_type: Type of provider ('openai', 'vllm')
+            provider_type: Type of provider ('openai', 'vllm', 'ollama', 'lmstudio')
             model_name: Name of the model to use
             api_key: API key (optional, will check environment variables)
             api_base: Custom API base URL (optional)
             temperature: Default temperature for generation
             max_tokens: Default max tokens for generation
-            reasoning_effort: Reasoning effort for o1/o3/gpt-5.x models ("low", "medium", "high")
+            reasoning_effort: Reasoning effort for reasoning models ("low", "medium", "high")
+            reasoning_model_prefixes: Optional tuple of model name prefixes that identify reasoning models
 
         Returns:
             LLMProvider instance
@@ -73,14 +75,17 @@ class LLMProviderFactory:
             raise ValueError(f"Unknown provider type: {provider_type}. Supported: {supported}")
 
         # Create config
-        config = LLMConfig(
+        config_kwargs = dict(
             model_name=model_name,
             api_key=api_key,
             api_base=api_base,
             temperature=temperature,
             max_tokens=max_tokens,
-            reasoning_effort=reasoning_effort
+            reasoning_effort=reasoning_effort,
         )
+        if reasoning_model_prefixes is not None:
+            config_kwargs["reasoning_model_prefixes"] = reasoning_model_prefixes
+        config = LLMConfig(**config_kwargs)
 
         # Instantiate provider
         provider_class = cls.PROVIDERS[provider_type]
@@ -136,6 +141,12 @@ class LLMProviderFactory:
         # Get reasoning model settings (for o1, o3, gpt-5.x)
         reasoning_effort = getattr(planner_cfg, 'reasoning_effort', None)
 
+        # Get reasoning model prefixes (configurable list of model name prefixes)
+        reasoning_model_prefixes = None
+        raw_prefixes = getattr(planner_cfg, 'reasoning_model_prefixes', None)
+        if raw_prefixes is not None:
+            reasoning_model_prefixes = tuple(raw_prefixes)
+
         return cls.create(
             provider_type=provider_type,
             model_name=model_name,
@@ -143,7 +154,8 @@ class LLMProviderFactory:
             api_base=api_base if api_base else None,
             temperature=temperature,
             max_tokens=max_tokens,
-            reasoning_effort=reasoning_effort
+            reasoning_effort=reasoning_effort,
+            reasoning_model_prefixes=reasoning_model_prefixes
         )
 
     @classmethod

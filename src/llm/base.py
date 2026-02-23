@@ -3,8 +3,8 @@ Abstract base class for LLM providers.
 Implements the Strategy Pattern for interchangeable LLM backends.
 """
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass, field
 from prompts import PromptLoader, get_prompt_loader
 
 
@@ -18,6 +18,10 @@ class LLMConfig:
     max_tokens: int = 500
     # Reasoning model settings (for o1, o3, gpt-5.x models)
     reasoning_effort: Optional[str] = None  # "low", "medium", "high"
+    # Model name prefixes that identify reasoning models
+    reasoning_model_prefixes: Tuple[str, ...] = (
+        "gpt-5", "o1", "o3", "o4", "qwen3", "glm-", "kimi-k"
+    )
 
 
 class LLMProvider(ABC):
@@ -32,6 +36,13 @@ class LLMProvider(ABC):
         self.config = config
         self.model_name = config.model_name
         self.prompt_loader = get_prompt_loader()
+
+    def is_reasoning_model(self) -> bool:
+        """Check if the current model is a reasoning model based on prefix matching."""
+        return any(
+            self.model_name.startswith(p)
+            for p in self.config.reasoning_model_prefixes
+        )
 
     @abstractmethod
     def chat_completion(

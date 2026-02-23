@@ -34,12 +34,6 @@ class OpenAIProvider(LLMProvider):
 
         self.client = OpenAI(**client_kwargs)
 
-    def _is_reasoning_model(self) -> bool:
-        """Check if the model is a reasoning model (o1, o3, gpt-5.x)."""
-        return (self.model_name.startswith("gpt-5") or
-                self.model_name.startswith("o1") or
-                self.model_name.startswith("o3"))
-
     def chat_completion(
         self,
         messages: List[Dict[str, str]],
@@ -56,8 +50,8 @@ class OpenAIProvider(LLMProvider):
             "messages": messages,
         }
 
-        # Reasoning models (o1, o3, gpt-5.x) have different parameters
-        if self._is_reasoning_model():
+        # Reasoning models have different parameters
+        if self.is_reasoning_model():
             # Use max_completion_tokens instead of max_tokens
             kwargs["max_completion_tokens"] = max_tok
             # Add reasoning_effort if configured (low, medium, high)

@@ -3,10 +3,13 @@ LM Studio LLM Provider implementation.
 LM Studio provides OpenAI-compatible API for locally served models.
 """
 import os
+import logging
 from openai import OpenAI, APIConnectionError
 from typing import List, Dict, Optional
 
 from .base import LLMProvider, LLMConfig
+
+logger = logging.getLogger(__name__)
 
 
 class LMStudioProvider(LLMProvider):
@@ -41,7 +44,18 @@ class LMStudioProvider(LLMProvider):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None
     ) -> str:
-        """Generate chat completion using LM Studio's OpenAI-compatible API."""
+        """Generate chat completion using LM Studio's OpenAI-compatible API.
+
+        Note: LM Studio always uses standard parameters (max_tokens + temperature)
+        even for reasoning models. LM Studio silently ignores unknown parameters.
+        """
+        if self.is_reasoning_model():
+            logger.info(
+                "Reasoning model '%s' detected on LM Studio. "
+                "Using standard parameters (max_tokens + temperature) — "
+                "LM Studio does not support reasoning-specific parameters.",
+                self.model_name,
+            )
         try:
             response = self.client.chat.completions.create(
                 model=self.model_name,
