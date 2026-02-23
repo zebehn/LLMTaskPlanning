@@ -275,6 +275,67 @@ class TestReactStep:
         with pytest.raises(ValueError, match="[Mm]ax.*steps"):
             planner.react_step("Some task", history)
 
+    def test_react_step_passes_available_objects(self, planner):
+        """Verify react_step forwards available_objects to _build_messages."""
+        planner.llm.chat_completion.return_value = "Think: check\nAct: find a Mug"
+        objects = ["Apple", "Fridge", "Mug"]
+        planner.react_step("Put an apple in the fridge.", [], available_objects=objects)
+
+        messages = planner.llm.chat_completion.call_args[0][0]
+        first_user_msg = next(m for m in messages if m['role'] == 'user')
+        assert "Available objects in this scene:" in first_user_msg['content']
+        assert "Apple, Fridge, Mug" in first_user_msg['content']
+
+
+# ===========================================================================
+# Tests for available_objects injection in _build_messages
+# ===========================================================================
+
+class TestBuildMessagesAvailableObjects:
+    """Tests for _build_messages() with available_objects parameter."""
+
+    @pytest.fixture
+    def planner(self):
+        """Create a ReActTaskPlanner with mocked dependencies."""
+        p = object.__new__(ReActTaskPlanner)
+        p.system_prompt = "You are a robot."
+        p.few_shot_examples = "Example task."
+        return p
+
+    def test_objects_appended_to_first_user_message(self, planner):
+        """Available objects list should appear in the first user message."""
+        objects = ["Apple", "Bowl", "Fridge", "Mug", "Plate"]
+        messages = planner._build_messages("Put a plate in the fridge.", [],
+                                           available_objects=objects)
+        first_user = next(m for m in messages if m['role'] == 'user')
+        assert "Task: Put a plate in the fridge." in first_user['content']
+        assert "Available objects in this scene: Apple, Bowl, Fridge, Mug, Plate" in first_user['content']
+
+    def test_no_objects_when_none(self, planner):
+        """When available_objects is None, no objects line should appear."""
+        messages = planner._build_messages("Put a plate in the fridge.", [],
+                                           available_objects=None)
+        first_user = next(m for m in messages if m['role'] == 'user')
+        assert "Available objects" not in first_user['content']
+
+    def test_no_objects_when_empty_list(self, planner):
+        """When available_objects is an empty list, no objects line should appear."""
+        messages = planner._build_messages("Put a plate in the fridge.", [],
+                                           available_objects=[])
+        first_user = next(m for m in messages if m['role'] == 'user')
+        assert "Available objects" not in first_user['content']
+
+    def test_objects_come_after_task_instruction(self, planner):
+        """Objects line should follow the Task: line."""
+        objects = ["Fridge", "Plate"]
+        messages = planner._build_messages("Wash the plate.", [],
+                                           available_objects=objects)
+        first_user = next(m for m in messages if m['role'] == 'user')
+        content = first_user['content']
+        task_idx = content.index("Task:")
+        objects_idx = content.index("Available objects")
+        assert objects_idx > task_idx
+
 
 # ===========================================================================
 # T010: Integration test for ReActAlfredEvaluator.evaluate_task()
@@ -350,7 +411,7 @@ class TestReActEvaluateTask:
             ("Now I pick it up", "pick up the mug"),
             ("Task is done", "done"),
         ]
-        def react_step_side_effect(instruction, history):
+        def react_step_side_effect(instruction, history, **kwargs):
             idx = call_count[0]
             call_count[0] += 1
             if idx < len(responses):
@@ -375,6 +436,55 @@ class TestReActEvaluateTask:
         assert 'reasoning_trace' in result
         assert len(result['reasoning_trace']) == 3
 
+    def test_evaluate_task_passes_available_objects(self, mock_cfg, mock_env, mock_traj_data):
+        """Verify evaluate_task extracts object types from registry and passes them."""
+        evaluator = ReActAlfredEvaluator(mock_cfg)
+
+        # Set up env with object registry
+        mock_env._obj_registry = {
+            'Apple|1': 'Apple_0',
+            'Mug|2': 'Mug_1',
+            'Mug|3': 'Mug_2',
+            'Fridge|4': 'Fridge_0',
+        }
+
+        mock_planner = MagicMock()
+        mock_planner.max_steps = 25
+        mock_planner.react_step.return_value = ("Done", "done")
+
+        evaluator.save_result = MagicMock()
+
+        evaluator.evaluate_task(
+            mock_env, mock_traj_data, 0, MagicMock(),
+            mock_planner, '/tmp/test', x_display='0'
+        )
+
+        # Check react_step was called with available_objects kwarg
+        call_kwargs = mock_planner.react_step.call_args
+        assert call_kwargs[1]['available_objects'] == ['Apple', 'Fridge', 'Mug']
+
+    def test_evaluate_task_no_registry(self, mock_cfg, mock_env, mock_traj_data):
+        """When env has no _obj_registry, available_objects should be None."""
+        evaluator = ReActAlfredEvaluator(mock_cfg)
+
+        # env without _obj_registry attribute
+        if hasattr(mock_env, '_obj_registry'):
+            del mock_env._obj_registry
+
+        mock_planner = MagicMock()
+        mock_planner.max_steps = 25
+        mock_planner.react_step.return_value = ("Done", "done")
+
+        evaluator.save_result = MagicMock()
+
+        evaluator.evaluate_task(
+            mock_env, mock_traj_data, 0, MagicMock(),
+            mock_planner, '/tmp/test', x_display='0'
+        )
+
+        call_kwargs = mock_planner.react_step.call_args
+        assert call_kwargs[1]['available_objects'] is None
+
     def test_evaluate_task_trace_contains_all_entries(self, mock_cfg, mock_env, mock_traj_data):
         """Verify trace contains thoughts, actions, and observations."""
         evaluator = ReActAlfredEvaluator(mock_cfg)
@@ -386,7 +496,7 @@ class TestReActEvaluateTask:
             ("Finding the mug", "find a mug"),
             ("Done now", "done"),
         ]
-        def react_step_side_effect(instruction, history):
+        def react_step_side_effect(instruction, history, **kwargs):
             idx = call_count[0]
             call_count[0] += 1
             if idx < len(responses):

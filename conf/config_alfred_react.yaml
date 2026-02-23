@@ -24,3 +24,4 @@ alfred:
   eval_set: 'valid_seen'
   eval_portion_in_percent: 5
   random_seed_for_eval_subset: 1
+  stratified_sampling: false

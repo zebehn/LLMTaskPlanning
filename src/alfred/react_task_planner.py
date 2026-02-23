@@ -120,7 +120,8 @@ class ReActTaskPlanner(TaskPlanner):
             'turn on', 'turn off', 'slice', 'done'
         ]
 
-    def react_step(self, task_instruction: str, history: list) -> tuple:
+    def react_step(self, task_instruction: str, history: list,
+                   available_objects: list[str] = None) -> tuple:
         """Generate one ReAct step: a thought followed by an action.
 
         Args:
@@ -129,6 +130,8 @@ class ReActTaskPlanner(TaskPlanner):
                 - "thought": str
                 - "action": str
                 - "observation": str
+            available_objects: Optional sorted list of unique object type names
+                present in the current scene (e.g. ["Apple", "Fridge", "Mug"]).
 
         Returns:
             Tuple of (thought: str, action: str)
@@ -139,7 +142,8 @@ class ReActTaskPlanner(TaskPlanner):
         if len(history) >= self.max_steps:
             raise ValueError(f"Max steps ({self.max_steps}) reached")
 
-        messages = self._build_messages(task_instruction, history)
+        messages = self._build_messages(task_instruction, history,
+                                        available_objects=available_objects)
 
         response = self.llm.chat_completion(
             messages,
@@ -150,7 +154,8 @@ class ReActTaskPlanner(TaskPlanner):
         thought, action = parse_react_output(response)
         return thought, action
 
-    def _build_messages(self, task_instruction: str, history: list) -> list:
+    def _build_messages(self, task_instruction: str, history: list,
+                        available_objects: list[str] = None) -> list:
         """Build the message list for chat_completion().
 
         Uses multi-turn format so the model naturally generates only one
@@ -159,6 +164,7 @@ class ReActTaskPlanner(TaskPlanner):
         Structure:
             1. System message: role description + format instructions
             2. User message: few-shot examples + task instruction
+               (+ available objects if provided)
             3. For each history step:
                - Assistant message: Think: ... / Act: ...
                - User message: Obs: ...
@@ -170,6 +176,11 @@ class ReActTaskPlanner(TaskPlanner):
         # First user message: few-shot examples + current task
         user_content = self.few_shot_examples + "\n"
         user_content += f"Task: {task_instruction}"
+        if available_objects:
+            user_content += (
+                "\nAvailable objects in this scene: "
+                + ", ".join(available_objects)
+            )
         messages.append({"role": "user", "content": user_content})
 
         # Each history step becomes assistant (Think+Act) then user (Obs)

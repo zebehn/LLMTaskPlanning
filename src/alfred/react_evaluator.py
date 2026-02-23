@@ -134,8 +134,51 @@ class ReActAlfredEvaluator(AlfredEvaluator):
         if cfg.alfred.eval_portion_in_percent < 100:
             seed = cfg.alfred.random_seed_for_eval_subset
             random.seed(seed)
-            n_sample = int(len(files) * cfg.alfred.eval_portion_in_percent / 100)
-            files = random.sample(files, n_sample)
+            n_sample = max(1, int(len(files) * cfg.alfred.eval_portion_in_percent / 100))
+
+            stratified = getattr(cfg.alfred, 'stratified_sampling', False)
+            if stratified:
+                # Group tasks by high-level ALFRED task type
+                from collections import defaultdict
+                ALFRED_TASK_TYPES = [
+                    'pick_and_place_with_movable_recep',
+                    'pick_clean_then_place_in_recep',
+                    'pick_heat_then_place_in_recep',
+                    'pick_cool_then_place_in_recep',
+                    'pick_and_place_simple',
+                    'look_at_obj_in_light',
+                ]
+
+                def _extract_task_type(task_path: str) -> str:
+                    for t in ALFRED_TASK_TYPES:
+                        if task_path.startswith(t):
+                            return t
+                    return task_path.split('-')[0]
+
+                by_type = defaultdict(list)
+                for e in files:
+                    task_type = _extract_task_type(e['task'])
+                    by_type[task_type].append(e)
+
+                selected = []
+                remaining_pool = []
+                for task_type, tasks in by_type.items():
+                    random.shuffle(tasks)
+                    selected.append(tasks[0])
+                    remaining_pool.extend(tasks[1:])
+
+                # Fill remaining slots from the pool
+                extra_needed = max(0, n_sample - len(selected))
+                if extra_needed > 0:
+                    random.shuffle(remaining_pool)
+                    selected.extend(remaining_pool[:extra_needed])
+
+                files = selected
+                log.info(f"Stratified sampling: {len(files)} tasks across "
+                         f"{len(by_type)} task types")
+            else:
+                files = random.sample(files, n_sample)
+
             random.seed(cfg.planner.random_seed)
 
         # Run evaluation
@@ -165,6 +208,19 @@ class ReActAlfredEvaluator(AlfredEvaluator):
                 result = self.evaluate_task(env, traj_data, r_idx, model_args,
                                            planner, save_path, x_display=x_display)
                 results.append(result)
+            except ValueError as e:
+                if "closed file" in str(e) or "closed pipe" in str(e):
+                    log.warning("AI2-THOR connection lost, restarting environment...")
+                    try:
+                        env.controller.stop()
+                    except Exception:
+                        pass
+                    env = ThorConnector(x_display=x_display)
+                    log.info("Environment restarted successfully")
+                else:
+                    import traceback
+                    traceback.print_exc()
+                    log.info("Error: " + repr(e))
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -216,6 +272,14 @@ class ReActAlfredEvaluator(AlfredEvaluator):
         instruction_text = traj_data['turk_annotations']['anns'][r_idx]['task_desc']
         log.info("Task: %s" % instruction_text)
 
+        # Extract unique object types from the scene registry
+        available_objects = None
+        if hasattr(env, '_obj_registry') and env._obj_registry:
+            available_objects = sorted(set(
+                name.rsplit('_', 1)[0] for name in env._obj_registry.values()
+            ))
+            log.info("Available objects: %s", ", ".join(available_objects))
+
         # ReAct loop
         history = []
         reasoning_trace = []
@@ -237,7 +301,9 @@ class ReActAlfredEvaluator(AlfredEvaluator):
 
             # Generate thought + action
             try:
-                thought, action = planner.react_step(instruction_text, history)
+                thought, action = planner.react_step(
+                    instruction_text, history,
+                    available_objects=available_objects)
             except ValueError as e:
                 log.warning(f"ReAct step failed: {e}")
                 termination_reason = "error"
