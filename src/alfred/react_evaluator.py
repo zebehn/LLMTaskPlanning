@@ -287,6 +287,8 @@ class ReActAlfredEvaluator(AlfredEvaluator):
         success = False
         termination_reason = "max_steps"
         t = 0
+        consecutive_failures = 0
+        MAX_CONSECUTIVE_FAILURES = 3
 
         try:
             from PIL import Image
@@ -304,10 +306,28 @@ class ReActAlfredEvaluator(AlfredEvaluator):
                 thought, action = planner.react_step(
                     instruction_text, history,
                     available_objects=available_objects)
+                consecutive_failures = 0  # reset on success
             except ValueError as e:
-                log.warning(f"ReAct step failed: {e}")
-                termination_reason = "error"
-                break
+                consecutive_failures += 1
+                log.warning(f"ReAct step {t} failed ({consecutive_failures}/"
+                            f"{MAX_CONSECUTIVE_FAILURES}): {e}")
+                # Record the malformed step but don't add it to history
+                # so the model doesn't see garbage in its next context.
+                reasoning_trace.append({
+                    'step_number': t,
+                    'thought': '',
+                    'action': f'[malformed: {e}]',
+                    'observation': None,
+                    'action_success': False,
+                })
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                    log.warning("Too many consecutive malformed responses, "
+                                "skipping task.")
+                    termination_reason = "malformed_output"
+                    break
+                # Continue to next step — the model gets a fresh chance
+                # without the garbage polluting its history.
+                continue
 
             log.info(f"Step {t}: Think: {thought}")
             log.info(f"Step {t}: Act: {action}")

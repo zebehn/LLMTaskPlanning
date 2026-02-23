@@ -11,10 +11,9 @@ You interact with the environment using the following actions:
 - slice the {object}: Slice a sliceable object (e.g., lettuce, tomato, bread).
 - done: Signal that the task is complete.
 
-At each step, you must output your reasoning and the action you want to take in the following format:
+At each step, you must output your reasoning and the action you want to take as a JSON object in the following format:
 
-Think: <your reasoning about what to do next>
-Act: <one action from the list above>
+{"Think": "<your reasoning about what to do next>", "Act": "<one action from the list above>"}
 
 After each action, you will receive an observation describing the result.
 

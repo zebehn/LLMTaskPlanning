@@ -5,8 +5,10 @@ Thought-Action-Observation steps using free-form LLM generation via
 chat_completion() rather than constrained action selection.
 """
 
+import json
 import logging
 import os
+import re
 
 from src.task_planner import TaskPlanner
 from llm import LLMProviderFactory
@@ -14,11 +16,47 @@ from llm import LLMProviderFactory
 log = logging.getLogger(__name__)
 
 
+def sanitize_llm_output(text: str) -> str:
+    """Sanitize raw LLM output by stripping control tokens and degenerate text.
+
+    - Strips ``<think>...</think>`` reasoning-model thinking blocks
+      (e.g. DeepSeek-R1, QwQ).
+    - Strips ``<|...|>`` control tokens (e.g. from LM Studio models).
+    - Collapses runs of 10+ repeated non-alphanumeric characters to 3,
+      preventing ``@@@`` degeneration loops.
+    """
+    # Strip <think>...</think> blocks from reasoning models (DOTALL for newlines)
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    # Strip orphaned opening <think> with no closing tag (model truncated mid-thought)
+    text = re.sub(r'<think>.*', '', text, flags=re.DOTALL)
+    # Strip control tokens like <|channel|>, <|constrain|>, <|message|>
+    text = re.sub(r'<\|[^|]*\|>', '', text)
+    # Collapse 10+ repeats of the same non-alphanumeric char to 3
+    text = re.sub(r'([^\w])\1{9,}', r'\1\1\1', text)
+    return text.strip()
+
+
+def _extract_json_value(text: str, key: str) -> str | None:
+    """Extract a string value for *key* from possibly-broken JSON text.
+
+    Uses regex to find ``"key"\\s*:\\s*"value"`` even when the outer braces
+    or other keys are malformed / missing.  Returns ``None`` if not found.
+    """
+    pattern = rf'"{re.escape(key)}"\s*:\s*"((?:[^"\\]|\\.)*)"'
+    m = re.search(pattern, text, flags=re.IGNORECASE)
+    return m.group(1) if m else None
+
+
 def parse_react_output(llm_output: str) -> tuple:
     """Parse LLM output into thought and action components.
 
-    Expected LLM output format:
-        "Think: [reasoning text]\\nAct: [action command]"
+    Tries JSON extraction first, then falls back to text-based parsing.
+
+    JSON format (preferred):
+        ``{"Think": "reasoning", "Act": "action command"}``
+
+    Text format (backward-compatible fallback):
+        ``Think: reasoning\\nAct: action command``
 
     Returns:
         Tuple of (thought, action) strings
@@ -28,34 +66,56 @@ def parse_react_output(llm_output: str) -> tuple:
         - If only thought found (no Act:), raises ValueError
         - If neither found, treats entire output as action
     """
-    text = llm_output.strip()
+    text = sanitize_llm_output(llm_output)
 
+    # --- JSON-first extraction (complete JSON) ---
+    # Find the outermost {...} in the text
+    match = re.search(r'\{[^{}]*\}', text)
+    if match:
+        try:
+            data = json.loads(match.group())
+            # Case-insensitive key lookup
+            lower_keys = {k.lower(): v for k, v in data.items()}
+            if 'think' in lower_keys and 'act' in lower_keys:
+                thought = str(lower_keys['think']).strip()
+                action = str(lower_keys['act']).strip()
+                action = action.split('\n', 1)[0].strip()
+                return thought, action
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # --- Broken-JSON extraction (incomplete / malformed JSON) ---
+    # The model may have started a JSON object but degenerated before
+    # closing it.  Try to extract "Think" and "Act" values via regex.
+    if '{' in text:
+        act_val = _extract_json_value(text, 'Act')
+        if act_val:
+            think_val = _extract_json_value(text, 'Think') or ""
+            action = act_val.split('\n', 1)[0].strip()
+            return think_val.strip(), action
+
+    # --- Text-based fallback ---
     has_think = "Think:" in text
     has_act = "Act:" in text
 
     if has_think and has_act:
-        # Standard format: Think: ... Act: ...
         think_idx = text.index("Think:")
         act_idx = text.index("Act:")
         thought = text[think_idx + len("Think:"):act_idx].strip()
         action = text[act_idx + len("Act:"):].strip()
-        # Only take the first line -- LLM may hallucinate future Obs/Think/Act
         action = action.split('\n', 1)[0].strip()
         return thought, action
 
     elif has_act and not has_think:
-        # Fallback: only Act present
         act_idx = text.index("Act:")
         action = text[act_idx + len("Act:"):].strip()
         action = action.split('\n', 1)[0].strip()
         return "", action
 
     elif has_think and not has_act:
-        # Error: only Think present
         raise ValueError("No Act: found in LLM output. Cannot extract action.")
 
     else:
-        # Neither found: treat entire output as action
         return "", text.split('\n', 1)[0].strip()
 
 
@@ -145,14 +205,32 @@ class ReActTaskPlanner(TaskPlanner):
         messages = self._build_messages(task_instruction, history,
                                         available_objects=available_objects)
 
-        response = self.llm.chat_completion(
+        raw_response = self.llm.chat_completion(
             messages,
             temperature=self.temperature,
             max_tokens=self.max_tokens
         )
 
+        log.info("Raw LLM response: %s", raw_response[:200])
+        response = sanitize_llm_output(raw_response)
+        log.debug("Sanitized LLM response: %s", response)
+
         thought, action = parse_react_output(response)
+
+        # Validate: action must start with a known verb or be "done".
+        # This prevents degenerate / garbage text from entering history.
+        if not self._is_valid_action(action):
+            log.warning("Malformed action rejected: %s", action[:120])
+            raise ValueError(
+                f"LLM produced an unparseable action: {action[:120]!r}"
+            )
+
         return thought, action
+
+    def _is_valid_action(self, action: str) -> bool:
+        """Return True if *action* starts with a recognised action verb."""
+        a = action.strip().lower()
+        return any(a.startswith(verb) for verb in self.skill_set)
 
     def _build_messages(self, task_instruction: str, history: list,
                         available_objects: list[str] = None) -> list:
@@ -163,34 +241,35 @@ class ReActTaskPlanner(TaskPlanner):
 
         Structure:
             1. System message: role description + format instructions
-            2. User message: few-shot examples + task instruction
                (+ available objects if provided)
+            2. User message: few-shot examples + task instruction
             3. For each history step:
-               - Assistant message: Think: ... / Act: ...
+               - Assistant message: JSON {"Think": ..., "Act": ...}
                - User message: Obs: ...
         """
+        system_content = self.system_prompt
+        if available_objects:
+            system_content += (
+                "\n\nAvailable objects in this scene: "
+                + ", ".join(available_objects)
+            )
         messages = [
-            {"role": "system", "content": self.system_prompt}
+            {"role": "system", "content": system_content}
         ]
 
         # First user message: few-shot examples + current task
         user_content = self.few_shot_examples + "\n"
         user_content += f"Task: {task_instruction}"
-        if available_objects:
-            user_content += (
-                "\nAvailable objects in this scene: "
-                + ", ".join(available_objects)
-            )
         messages.append({"role": "user", "content": user_content})
 
-        # Each history step becomes assistant (Think+Act) then user (Obs)
+        # Each history step becomes assistant (JSON Think+Act) then user (Obs)
         for step in history:
-            assistant_msg = ""
+            entry = {}
             if step.get('thought'):
-                assistant_msg += f"Think: {step['thought']}\n"
+                entry['Think'] = step['thought']
             if step.get('action'):
-                assistant_msg += f"Act: {step['action']}"
-            messages.append({"role": "assistant", "content": assistant_msg})
+                entry['Act'] = step['action']
+            messages.append({"role": "assistant", "content": json.dumps(entry)})
 
             if step.get('observation'):
                 messages.append({"role": "user", "content": f"Obs: {step['observation']}"})

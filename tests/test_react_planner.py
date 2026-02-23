@@ -1,7 +1,8 @@
 """Unit and integration tests for the ReAct planner and evaluator.
 
 These tests cover:
-- parse_react_output() parsing logic (T004)
+- sanitize_llm_output() sanitization logic
+- parse_react_output() parsing logic (T004) — JSON-first with text fallback
 - construct_observation() observation building (T005)
 - react_step() core method (T009)
 - ReActAlfredEvaluator.evaluate_task() integration (T010)
@@ -12,6 +13,7 @@ These tests cover:
 Tests do NOT require AI2-THOR or the simulator to be installed.
 """
 
+import json
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -42,8 +44,90 @@ _thor_mocks["gen.constants"].CAMERA_HEIGHT_OFFSET = 0.675
 
 
 with patch.dict(sys.modules, _thor_mocks):
-    from src.alfred.react_task_planner import ReActTaskPlanner, parse_react_output
+    from src.alfred.react_task_planner import (
+        ReActTaskPlanner, parse_react_output, sanitize_llm_output,
+    )
     from src.alfred.react_evaluator import ReActAlfredEvaluator, construct_observation
+
+
+# ===========================================================================
+# Unit tests for sanitize_llm_output()
+# ===========================================================================
+
+class TestSanitizeLlmOutput:
+    """Tests for sanitize_llm_output() sanitization logic."""
+
+    def test_strip_control_tokens(self):
+        """Control tokens like <|channel|> should be stripped."""
+        raw = '<|channel|>commentary to=assistant <|constrain|>json<|message|>{"Think":"hi","Act":"done"}'
+        result = sanitize_llm_output(raw)
+        assert "<|" not in result
+        assert '{"Think":"hi","Act":"done"}' in result
+
+    def test_collapse_degenerate_repeats(self):
+        """Runs of 10+ repeated non-alnum chars should collapse to 3."""
+        raw = "some text @@@@@@@@@@@@@@@@@ more text"
+        result = sanitize_llm_output(raw)
+        assert "@@@@@@@@@" not in result
+        assert "@@@" in result
+        assert "some text" in result
+        assert "more text" in result
+
+    def test_clean_passthrough(self):
+        """Already-clean text should pass through unchanged (modulo strip)."""
+        raw = '{"Think": "I need to find a mug", "Act": "find a mug"}'
+        result = sanitize_llm_output(raw)
+        assert result == raw
+
+    def test_short_repeats_not_collapsed(self):
+        """Repeats shorter than 10 should not be collapsed."""
+        raw = "text... more"
+        result = sanitize_llm_output(raw)
+        assert result == raw
+
+    def test_multiple_control_tokens(self):
+        """Multiple different control tokens should all be stripped."""
+        raw = '<|start|>hello<|mid|>world<|end|>'
+        result = sanitize_llm_output(raw)
+        assert result == "helloworld"
+
+    def test_strip_think_block(self):
+        """Reasoning model <think>...</think> blocks should be stripped."""
+        raw = '<think>Let me reason about this step by step...</think>{"Think": "find mug", "Act": "find a mug"}'
+        result = sanitize_llm_output(raw)
+        assert "<think>" not in result
+        assert "</think>" not in result
+        assert '{"Think": "find mug", "Act": "find a mug"}' in result
+
+    def test_strip_multiline_think_block(self):
+        """Multi-line <think> blocks should be fully stripped."""
+        raw = (
+            '<think>\nStep 1: I need to understand the task.\n'
+            'Step 2: The user wants me to find a mug.\n'
+            'Step 3: I should output JSON.\n</think>\n'
+            '{"Think": "I need to find a mug.", "Act": "find a mug"}'
+        )
+        result = sanitize_llm_output(raw)
+        assert "<think>" not in result
+        assert "Step 1" not in result
+        assert '{"Think": "I need to find a mug.", "Act": "find a mug"}' in result
+
+    def test_strip_orphaned_think_tag(self):
+        """An opening <think> with no closing tag (truncated) should be stripped."""
+        raw = '<think>reasoning that got cut off by max_tokens'
+        result = sanitize_llm_output(raw)
+        assert result == ""
+
+    def test_strip_think_block_with_control_tokens(self):
+        """<think> blocks and control tokens together should both be stripped."""
+        raw = (
+            '<think>internal reasoning</think>'
+            '<|message|>{"Think": "plan", "Act": "done"}'
+        )
+        result = sanitize_llm_output(raw)
+        assert "<think>" not in result
+        assert "<|" not in result
+        assert '{"Think": "plan", "Act": "done"}' in result
 
 
 # ===========================================================================
@@ -51,10 +135,42 @@ with patch.dict(sys.modules, _thor_mocks):
 # ===========================================================================
 
 class TestParseReactOutput:
-    """Tests for parse_react_output() parsing logic."""
+    """Tests for parse_react_output() parsing logic — JSON-first with text fallback."""
+
+    # --- JSON format tests ---
+
+    def test_parse_json_format(self):
+        """Parse standard JSON {"Think": ..., "Act": ...} format."""
+        output = '{"Think": "I need to find a lettuce first.", "Act": "find a lettuce"}'
+        thought, action = parse_react_output(output)
+        assert thought == "I need to find a lettuce first."
+        assert action == "find a lettuce"
+
+    def test_parse_json_inside_control_tokens(self):
+        """Extract JSON even when wrapped in control tokens."""
+        output = '<|channel|>commentary<|message|>{"Think": "reasoning", "Act": "find a mug"}'
+        thought, action = parse_react_output(output)
+        assert thought == "reasoning"
+        assert action == "find a mug"
+
+    def test_parse_json_case_insensitive_keys(self):
+        """JSON keys should be matched case-insensitively."""
+        output = '{"think": "lower case keys", "act": "done"}'
+        thought, action = parse_react_output(output)
+        assert thought == "lower case keys"
+        assert action == "done"
+
+    def test_parse_json_with_surrounding_text(self):
+        """JSON embedded in surrounding text should be extracted."""
+        output = 'Here is my response: {"Think": "plan ahead", "Act": "find a knife"} end'
+        thought, action = parse_react_output(output)
+        assert thought == "plan ahead"
+        assert action == "find a knife"
+
+    # --- Text format backward-compatibility tests ---
 
     def test_parse_standard_think_act(self):
-        """Parse standard 'Think: reasoning\\nAct: action' format."""
+        """Parse standard 'Think: reasoning\\nAct: action' text format (backward compat)."""
         output = "Think: I need to find a lettuce first.\nAct: find a lettuce"
         thought, action = parse_react_output(output)
         assert thought == "I need to find a lettuce first."
@@ -81,14 +197,14 @@ class TestParseReactOutput:
         assert action == "find a mug"
 
     def test_parse_done_action(self):
-        """Handle 'done' action correctly."""
-        output = "Think: The task is complete.\nAct: done"
+        """Handle 'done' action correctly (JSON)."""
+        output = '{"Think": "The task is complete.", "Act": "done"}'
         thought, action = parse_react_output(output)
         assert thought == "The task is complete."
         assert action == "done"
 
     def test_parse_no_delimiters_treats_as_action(self):
-        """When neither Think: nor Act: found, treat entire output as action."""
+        """When neither JSON nor Think:/Act: found, treat entire output as action."""
         output = "find a lettuce"
         thought, action = parse_react_output(output)
         assert thought == ""
@@ -100,6 +216,41 @@ class TestParseReactOutput:
         thought, action = parse_react_output(output)
         assert thought == "I need to pick up the apple."
         assert action == "pick up the apple"
+
+    def test_parse_malformed_json_falls_back_to_text(self):
+        """Malformed JSON should fall back to text parsing."""
+        output = '{"Think": bad json}\nThink: text fallback\nAct: find a mug'
+        thought, action = parse_react_output(output)
+        assert action == "find a mug"
+
+    def test_parse_json_missing_act_falls_back(self):
+        """JSON with Think but no Act should fall back to text parsing."""
+        output = '{"Think": "only thought"}\nAct: text action'
+        thought, action = parse_react_output(output)
+        assert action == "text action"
+
+    # --- Broken / incomplete JSON tests ---
+
+    def test_parse_incomplete_json_extracts_act(self):
+        """Incomplete JSON (no closing brace) should still extract Act via regex."""
+        output = '{"Think": "I need to find an apple", "Act": "find a apple"'
+        thought, action = parse_react_output(output)
+        assert thought == "I need to find an apple"
+        assert action == "find a apple"
+
+    def test_parse_degenerate_json_extracts_act(self):
+        """JSON that degenerates mid-value should extract Act if it was complete."""
+        output = '{"Think": "planning ahead@@@", "Act": "find a mug", "extra": "garbage@@@'
+        thought, action = parse_react_output(output)
+        assert action == "find a mug"
+
+    def test_parse_incomplete_json_no_act_value(self):
+        """Incomplete JSON where Act value never appears should fall through."""
+        # No "Act" key at all — only Think was started before degeneration
+        output = '{"Think": "I need to find an apple@@@@@@@@@@@'
+        thought, action = parse_react_output(output)
+        # Falls through to last-resort: entire first line as action
+        assert thought == ""
 
 
 # ===========================================================================
@@ -233,14 +384,14 @@ class TestReactStep:
 
     def test_react_step_returns_thought_action(self, planner):
         """Verify react_step returns (thought, action) tuple."""
-        planner.llm.chat_completion.return_value = "Think: I need to find a apple\nAct: find a apple"
+        planner.llm.chat_completion.return_value = '{"Think": "I need to find a apple", "Act": "find a apple"}'
         thought, action = planner.react_step("Put an apple on the table.", [])
         assert thought == "I need to find a apple"
         assert action == "find a apple"
 
     def test_react_step_with_empty_history(self, planner):
         """Test react_step with no previous history."""
-        planner.llm.chat_completion.return_value = "Think: Let me start by finding the object.\nAct: find a mug"
+        planner.llm.chat_completion.return_value = '{"Think": "Let me start by finding the object.", "Act": "find a mug"}'
         thought, action = planner.react_step("Put a mug on the desk.", [])
         assert action == "find a mug"
         # Verify chat_completion was called with messages
@@ -254,10 +405,10 @@ class TestReactStep:
             {"thought": "I need to find a mug", "action": "find a mug", "observation": "Found mug."},
             {"thought": "Now pick it up", "action": "pick up the mug", "observation": "You picked up the mug."},
         ]
-        planner.llm.chat_completion.return_value = "Think: Now I need to find the desk.\nAct: find a desk"
+        planner.llm.chat_completion.return_value = '{"Think": "Now I need to find the desk.", "Act": "find a desk"}'
         thought, action = planner.react_step("Put a mug on the desk.", history)
         assert action == "find a desk"
-        # Verify history was included in messages
+        # Verify history was included in messages as JSON
         messages = planner.llm.chat_completion.call_args[0][0]
         msg_text = str(messages)
         assert "find a mug" in msg_text
@@ -276,15 +427,39 @@ class TestReactStep:
             planner.react_step("Some task", history)
 
     def test_react_step_passes_available_objects(self, planner):
-        """Verify react_step forwards available_objects to _build_messages."""
-        planner.llm.chat_completion.return_value = "Think: check\nAct: find a Mug"
+        """Verify react_step forwards available_objects to system prompt."""
+        planner.llm.chat_completion.return_value = '{"Think": "check", "Act": "find a Mug"}'
         objects = ["Apple", "Fridge", "Mug"]
         planner.react_step("Put an apple in the fridge.", [], available_objects=objects)
 
         messages = planner.llm.chat_completion.call_args[0][0]
-        first_user_msg = next(m for m in messages if m['role'] == 'user')
-        assert "Available objects in this scene:" in first_user_msg['content']
-        assert "Apple, Fridge, Mug" in first_user_msg['content']
+        system_msg = next(m for m in messages if m['role'] == 'system')
+        assert "Available objects in this scene:" in system_msg['content']
+        assert "Apple, Fridge, Mug" in system_msg['content']
+
+    def test_react_step_rejects_garbage_action(self, planner):
+        """Action that doesn't start with a known verb should raise ValueError."""
+        planner.llm.chat_completion.return_value = '{"Think": "hmm@@@", "Act": "@@@garbage"}'
+        with pytest.raises(ValueError, match="unparseable action"):
+            planner.react_step("Some task.", [])
+
+    def test_react_step_rejects_raw_json_as_action(self, planner):
+        """Incomplete JSON that falls to last-resort should be rejected."""
+        # Model produced incomplete JSON with no Act value — last resort
+        # returns the raw text as action, which is not a valid verb.
+        planner.llm.chat_completion.return_value = 'I am sorry, I cannot help.'
+        with pytest.raises(ValueError, match="unparseable action"):
+            planner.react_step("Some task.", [])
+
+    def test_is_valid_action(self, planner):
+        """Verify _is_valid_action recognises all skill_set verbs."""
+        assert planner._is_valid_action("find a mug")
+        assert planner._is_valid_action("pick up the apple")
+        assert planner._is_valid_action("put down the knife")
+        assert planner._is_valid_action("done")
+        assert not planner._is_valid_action("@@@garbage")
+        assert not planner._is_valid_action('{"Think": "broken')
+        assert not planner._is_valid_action("")
 
 
 # ===========================================================================
@@ -302,39 +477,53 @@ class TestBuildMessagesAvailableObjects:
         p.few_shot_examples = "Example task."
         return p
 
-    def test_objects_appended_to_first_user_message(self, planner):
-        """Available objects list should appear in the first user message."""
+    def test_objects_appended_to_system_message(self, planner):
+        """Available objects list should appear in the system message."""
         objects = ["Apple", "Bowl", "Fridge", "Mug", "Plate"]
         messages = planner._build_messages("Put a plate in the fridge.", [],
                                            available_objects=objects)
+        system_msg = next(m for m in messages if m['role'] == 'system')
+        assert "Available objects in this scene: Apple, Bowl, Fridge, Mug, Plate" in system_msg['content']
+        # User message should NOT contain available objects
         first_user = next(m for m in messages if m['role'] == 'user')
-        assert "Task: Put a plate in the fridge." in first_user['content']
-        assert "Available objects in this scene: Apple, Bowl, Fridge, Mug, Plate" in first_user['content']
+        assert "Available objects" not in first_user['content']
 
     def test_no_objects_when_none(self, planner):
         """When available_objects is None, no objects line should appear."""
         messages = planner._build_messages("Put a plate in the fridge.", [],
                                            available_objects=None)
-        first_user = next(m for m in messages if m['role'] == 'user')
-        assert "Available objects" not in first_user['content']
+        system_msg = next(m for m in messages if m['role'] == 'system')
+        assert "Available objects" not in system_msg['content']
 
     def test_no_objects_when_empty_list(self, planner):
         """When available_objects is an empty list, no objects line should appear."""
         messages = planner._build_messages("Put a plate in the fridge.", [],
                                            available_objects=[])
-        first_user = next(m for m in messages if m['role'] == 'user')
-        assert "Available objects" not in first_user['content']
+        system_msg = next(m for m in messages if m['role'] == 'system')
+        assert "Available objects" not in system_msg['content']
 
-    def test_objects_come_after_task_instruction(self, planner):
-        """Objects line should follow the Task: line."""
+    def test_objects_in_system_after_prompt(self, planner):
+        """Objects line should follow the system prompt text."""
         objects = ["Fridge", "Plate"]
         messages = planner._build_messages("Wash the plate.", [],
                                            available_objects=objects)
-        first_user = next(m for m in messages if m['role'] == 'user')
-        content = first_user['content']
-        task_idx = content.index("Task:")
+        system_msg = next(m for m in messages if m['role'] == 'system')
+        content = system_msg['content']
+        robot_idx = content.index("You are a robot.")
         objects_idx = content.index("Available objects")
-        assert objects_idx > task_idx
+        assert objects_idx > robot_idx
+
+    def test_history_uses_json_format(self, planner):
+        """History assistant messages should use JSON format."""
+        history = [
+            {"thought": "I need a mug", "action": "find a mug", "observation": "Found mug."},
+        ]
+        messages = planner._build_messages("Get a mug.", history)
+        assistant_msgs = [m for m in messages if m['role'] == 'assistant']
+        assert len(assistant_msgs) == 1
+        data = json.loads(assistant_msgs[0]['content'])
+        assert data['Think'] == "I need a mug"
+        assert data['Act'] == "find a mug"
 
 
 # ===========================================================================
