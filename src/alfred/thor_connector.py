@@ -173,9 +173,8 @@ class ThorConnector(ThorEnv):
                 else:
                     ret = self.put(natural_word_to_ithor_name(receptacle))
 
-            if len(ret) > 16:
-                # if put down failed, then drop the object
-                ret = self.drop()
+            if ret:
+                ret = 'put down failed'
                 self.last_event.metadata['lastActionSuccess'] = False
 
         elif instruction.startswith("open "):
@@ -613,8 +612,6 @@ class ThorConnector(ThorEnv):
                 ret_msg = f'Robot is not holding any object'
             else:
                 ret_msg = f"Drop action failed"
-        else:
-            ret_msg = 'put down failed'
 
         return ret_msg
 

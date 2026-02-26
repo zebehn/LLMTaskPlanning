@@ -4,6 +4,7 @@ You interact with the environment using the following actions:
 - find a/an {object}: Navigate to the specified object.
 - pick up the {object}: Pick up the specified object (you must be near it first).
 - put down the {object}: Put down the object you are holding onto the nearest receptacle.
+- drop the {object}: Drop the object you are holding onto the floor. Use this only as a last resort after failing to put down on multiple receptacles.
 - open the {object}: Open a container (e.g., fridge, microwave, cabinet).
 - close the {object}: Close a container.
 - turn on the {object}: Turn on an appliance or light (e.g., microwave, desk lamp).
@@ -27,4 +28,5 @@ Important rules:
 - Always close openable receptacles (fridge, microwave, cabinet) after you are done using them.
 - To examine an object in light, pick up the object and find a desk lamp, then turn on the desk lamp.
 - If an action fails, read the observation carefully and adjust your plan accordingly.
+- If "put down" fails, the object is still in your hand. Try finding a different instance of the same receptacle type and put down there. After 3 consecutive put-down failures, drop the object and pick it up again to retry from a fresh state.
 - Say "done" only when you believe the task is fully complete.

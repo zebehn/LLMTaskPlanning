@@ -176,7 +176,7 @@ class ReActTaskPlanner(TaskPlanner):
         against this list post-hoc.
         """
         return [
-            'find', 'pick up', 'put down', 'open', 'close',
+            'find', 'pick up', 'put down', 'drop', 'open', 'close',
             'turn on', 'turn off', 'slice', 'done'
         ]
 
