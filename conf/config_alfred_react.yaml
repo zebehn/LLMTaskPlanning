@@ -25,3 +25,5 @@ alfred:
   eval_portion_in_percent: 5
   random_seed_for_eval_subset: 1
   stratified_sampling: false
+  validation_report: ""
+  skip_categories: [1]

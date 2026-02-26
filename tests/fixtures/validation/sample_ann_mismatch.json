@@ -1,0 +1,32 @@
+{
+  "task_id": "trial_T20190908_052232_887934",
+  "task_type": "pick_and_place_simple",
+  "root": "alfred/data/json_2.1.0/pick_and_place_simple-Candle-None-Toilet-429/trial_T20190908_052232_887934",
+  "repeat_idx": 0,
+  "pddl_params": {
+    "object_target": "Candle",
+    "parent_target": "Toilet",
+    "mrecep_target": "",
+    "object_sliced": false,
+    "toggle_target": ""
+  },
+  "scene": {
+    "scene_num": 429,
+    "object_poses": [
+      {"objectName": "Candle_96bce45a", "position": {"x": 0.9, "y": 0.8, "z": -1.8}, "rotation": {"x": 0, "y": 90, "z": 0}},
+      {"objectName": "SprayBottle_b0e070bc", "position": {"x": -1.75, "y": 0.8, "z": -0.19}, "rotation": {"x": 0, "y": 0, "z": 0}},
+      {"objectName": "SoapBar_a5cd30dd", "position": {"x": 0.85, "y": 0.8, "z": -1.97}, "rotation": {"x": 0, "y": 90, "z": 0}},
+      {"objectName": "Towel_4aebdbec", "position": {"x": -1.52, "y": 1.68, "z": -0.1}, "rotation": {"x": 0, "y": 180, "z": 0}}
+    ],
+    "dirty_and_empty": false,
+    "object_toggles": [],
+    "init_action": {"action": "TeleportFull", "x": -1.0, "y": 0.9, "z": -0.75, "rotation": 90, "horizon": 0}
+  },
+  "turk_annotations": {
+    "anns": [
+      {"task_desc": "Put the spray bottle on the toilet."},
+      {"task_desc": "Put a bottle of nail polish on the toilet."},
+      {"task_desc": "Place the candle on the toilet."}
+    ]
+  }
+}
