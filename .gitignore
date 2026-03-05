@@ -10,3 +10,6 @@ alfred/data/json_2.1.0/
 .env
 .env.local
 .env.*.local
+
+# Claude Code
+.claude/
