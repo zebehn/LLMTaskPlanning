@@ -56,6 +56,12 @@ This fork introduces the following improvements over the original repository:
   - Per-task-type success rate breakdown and aggregate statistics saved as `react_summary.json`
   - 27 unit tests covering output parsing, observation construction, evaluation loop, and config dispatch
 
+### Instruction Validation
+- **LLM-based annotation quality analysis** — Classifies ALFRED task instructions into 4 categories (valid, non_existent, goal_mismatch, ambiguous) by comparing annotator-written instructions against scene objects and PDDL ground truth
+- Standalone CLI tool with configurable split, portion, stratified sampling, and LLM provider
+- JSON validation reports with per-entry reasoning and per-task-type summary statistics
+- Integration with ReAct evaluator to skip problematic instructions via `validation_report` and `skip_categories` config
+
 ### Other Improvements
 - Modernized Python compatibility (3.8 - 3.12)
 - Environment variable configuration via `.env` file
@@ -506,6 +512,115 @@ A detailed Mermaid sequence diagram of the ReAct planner flow is available at [`
 
 ---
 
+## Instruction Validation
+
+The instruction validation tool analyzes ALFRED task annotations by comparing human-written instructions against scene objects and PDDL ground-truth targets using a lightweight LLM. This helps identify annotation quality issues that can impact evaluation reliability.
+
+### Validation Categories
+
+Each instruction is classified into one of four categories:
+
+| Category | Label | Description |
+|----------|-------|-------------|
+| 0 | `valid` | Instruction matches ground-truth targets and referenced objects exist in the scene |
+| 1 | `non_existent` | Instruction references objects or receptacles not present in the scene |
+| 2 | `goal_mismatch` | Referenced objects exist but don't match ground-truth PDDL targets |
+| 3 | `ambiguous` | Vague or colloquial terms that could plausibly refer to the correct targets |
+
+### Running Instruction Validation
+
+**Validate all instructions in a split:**
+```bash
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/alfred/instruction_validator.py \
+    --split valid_seen
+```
+
+**Validate a subset (e.g., 5%) with a specific model:**
+```bash
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/alfred/instruction_validator.py \
+    --split valid_seen --portion 5 --model gpt-5-mini
+```
+
+**With stratified sampling by task type:**
+```bash
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/alfred/instruction_validator.py \
+    --split valid_seen --portion 10 --stratified
+```
+
+### CLI Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--split` | (required) | ALFRED split to validate (`valid_seen`, `valid_unseen`, `train`) |
+| `--model` | `gpt-5-mini` | LLM model for classification |
+| `--provider` | `openai` | LLM provider (`openai`, `vllm`, `ollama`, etc.) |
+| `--reasoning-effort` | `low` | Reasoning effort for reasoning models |
+| `--output` | auto | Output path (default: `outputs/alfred_react/instruction_validation_{split}.json`) |
+| `--portion` | `100` | Percentage of tasks to validate (1-100) |
+| `--seed` | `1` | Random seed for subset sampling |
+| `--stratified` | `false` | Enable stratified sampling by task type |
+
+### Validation Report
+
+Reports are saved as JSON with the following structure:
+
+```json
+{
+  "split": "valid_seen",
+  "model": "gpt-5-mini",
+  "generated_at": "2026-02-26T08:41:46.616701+00:00",
+  "total_entries": 34,
+  "summary": {
+    "total": 34,
+    "category_0": 9,
+    "category_1": 10,
+    "category_2": 15,
+    "category_3": 0
+  },
+  "by_task_type": { ... },
+  "entries": [
+    {
+      "task_path": "pick_and_place_simple-SoapBar-None-Cart-401/trial_T20190907_054906_608944",
+      "task_type": "pick_and_place_simple",
+      "category": 2,
+      "category_label": "goal_mismatch",
+      "instruction_text": "To place the soap on the rack.",
+      "pddl_targets": { "object_target": "SoapBar", "parent_target": "Cart", ... },
+      "scene_objects": ["Candle", "Cloth", "SoapBar", ...],
+      "reason": "The instruction mentions 'rack' instead of the ground truth target 'Cart'."
+    }
+  ]
+}
+```
+
+A sample validation report is available at [`docs/instruction_validation_valid_seen.json`](docs/instruction_validation_valid_seen.json).
+
+### Using Validation Reports with ReAct Evaluation
+
+Validation reports can be used to filter out problematic instructions during ReAct evaluation. Configure this in `conf/config_alfred_react.yaml`:
+
+```yaml
+alfred:
+  validation_report: "docs/instruction_validation_valid_seen.json"
+  skip_categories: [1]  # skip non_existent instructions
+```
+
+Or via command-line overrides:
+
+```bash
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/evaluate.py --config-name=config_alfred_react \
+    alfred.validation_report=docs/instruction_validation_valid_seen.json \
+    alfred.skip_categories=[1,2]
+```
+
+### Running Tests
+
+```bash
+pytest tests/test_instruction_validator.py -v
+```
+
+---
+
 ## Benchmarking on Watch-And-Help
 
 ### Download the VirtualHome Simulator
@@ -830,6 +945,9 @@ pytest tests/test_gt_evaluator.py tests/test_gt_report.py -v
 # ReAct planner tests only (27 tests)
 pytest tests/test_react_planner.py -v
 
+# Instruction validator tests
+pytest tests/test_instruction_validator.py -v
+
 # AI2-THOR compatibility tests only
 pytest tests/test_ai2thor_compatibility.py -v
 
@@ -864,6 +982,7 @@ LLMTaskPlanning/
 │   │   ├── gt_report.py        # Failure categorization & report generation
 │   │   ├── react_evaluator.py  # ReAct evaluation loop (Thought-Action-Observation)
 │   │   ├── react_task_planner.py # ReAct planner (LLM calls, parsing, message building)
+│   │   ├── instruction_validator.py # LLM-based instruction annotation validator
 │   │   ├── thor_connector.py   # AI2-THOR simulator interface & action primitives
 │   │   └── utils.py            # Shared utilities (load_task_json, name conversion)
 │   └── wah/                    # Watch-And-Help evaluator
@@ -878,8 +997,12 @@ LLMTaskPlanning/
 │   ├── test_gt_evaluator.py        # GT evaluator unit tests (24 tests)
 │   ├── test_gt_report.py           # GT report unit tests (23 tests)
 │   ├── test_react_planner.py       # ReAct planner unit tests (27 tests)
+│   ├── test_instruction_validator.py # Instruction validator unit tests
 │   ├── test_ai2thor_compatibility.py # AI2-THOR 5.x compatibility tests
 │   └── test_llm_providers.py       # LLM provider unit tests
+├── docs/                      # Documentation & reports
+│   ├── react_sequence_diagram.md              # ReAct planner Mermaid sequence diagram
+│   └── instruction_validation_valid_seen.json # Sample validation report
 ├── resource/                   # Prompt examples & ground-truth data
 ├── alfred/                     # ALFRED environment & dataset
 ├── virtualhome/                # VirtualHome environment
