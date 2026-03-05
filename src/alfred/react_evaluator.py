@@ -70,6 +70,10 @@ def construct_observation(action_result: dict) -> str:
         obj = action.replace("turn off the ", "").replace("turn off ", "")
         return f"You turned off the {obj}."
 
+    elif action.startswith("drop "):
+        obj = action.replace("drop the ", "").replace("drop ", "")
+        return f"You dropped the {obj} on the floor."
+
     elif action.startswith("slice "):
         obj = action.replace("slice the ", "").replace("slice ", "")
         return f"You sliced the {obj}."
@@ -181,6 +185,16 @@ class ReActAlfredEvaluator(AlfredEvaluator):
 
             random.seed(cfg.planner.random_seed)
 
+        # Load validation report for instruction filtering
+        validation_lookup = {}
+        validation_report_path = getattr(cfg.alfred, 'validation_report', '')
+        skip_categories = list(getattr(cfg.alfred, 'skip_categories', [1]))
+        if validation_report_path:
+            from src.alfred.instruction_validator import load_validation_report
+            validation_lookup = load_validation_report(validation_report_path)
+            log.info("Loaded validation report from %s (%d entries, skipping categories %s)",
+                     validation_report_path, len(validation_lookup), skip_categories)
+
         # Run evaluation
         start = time.time()
         x_display = cfg.alfred.x_display
@@ -199,7 +213,27 @@ class ReActAlfredEvaluator(AlfredEvaluator):
             with open(os.path.join(save_path, 'prompt.txt'), 'w') as f:
                 f.write(planner.system_prompt + "\n\n" + planner.few_shot_examples)
 
+        skipped_count = 0
         for i, task in enumerate(tqdm(files)):
+            # Check validation report — skip flagged instructions
+            if validation_lookup:
+                key = (task['task'], task['repeat_idx'])
+                val_entry = validation_lookup.get(key)
+                if val_entry and val_entry['category'] in skip_categories:
+                    skipped_count += 1
+                    log.info("Skipping (%d/%d) %s (repeat %d): %s — %s",
+                             i + 1, len(files), task['task'], task['repeat_idx'],
+                             val_entry.get('category_label', ''),
+                             val_entry.get('reason', ''))
+                    results.append({
+                        'trial': val_entry.get('task_path', task['task']),
+                        'repeat_idx': task['repeat_idx'],
+                        'skipped': True,
+                        'skip_reason': val_entry.get('category_label', ''),
+                        'skip_category': val_entry['category'],
+                    })
+                    continue
+
             try:
                 log.info(task)
                 traj_data = load_task_json(task, split=cfg.alfred.eval_set)
@@ -227,10 +261,14 @@ class ReActAlfredEvaluator(AlfredEvaluator):
                 log.info("Error: " + repr(e))
 
         # Print and save summary
-        summary = self.build_summary_report(results)
+        evaluated_results = [r for r in results if not r.get('skipped', False)]
+        summary = self.build_summary_report(evaluated_results)
+        summary['total_skipped'] = skipped_count
         log.info(f"\n{'='*60}")
         log.info("ReAct Evaluation Summary")
         log.info(f"{'='*60}")
+        if skipped_count > 0:
+            log.info(f"Skipped (validation filter): {skipped_count}")
         log.info(f"Total evaluated: {summary['total_evaluated']}")
         log.info(f"Total success: {summary['total_success']}")
         log.info(f"Success rate: {summary['success_rate']*100:.2f}%")
