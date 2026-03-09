@@ -1,0 +1,31 @@
+name: alfred_react
+
+defaults:
+  - hydra: default.yaml
+  - planner: default.yaml
+  - override hydra/help: custom
+  - _self_
+
+out_dir: ${hydra:run.dir}
+
+planner:
+  provider: "transformers"
+  model_name: "Qwen/Qwen3-8B"
+  device_map: "auto"
+  torch_dtype: "auto"
+  max_steps: 25
+  temperature: 0.0
+  max_tokens: 1024
+
+prompt:
+  react_system_prompt: "src/prompts/templates/react_system.txt"
+  react_few_shot_examples: "src/prompts/templates/react_few_shot_examples.txt"
+
+alfred:
+  x_display: '0'
+  eval_set: 'valid_seen'
+  eval_portion_in_percent: 5
+  random_seed_for_eval_subset: 1
+  stratified_sampling: false
+  validation_report: ""
+  skip_categories: [1]

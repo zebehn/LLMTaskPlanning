@@ -16,6 +16,9 @@ class LLMConfig:
     api_base: Optional[str] = None
     temperature: float = 0.0
     max_tokens: int = 500
+    # Local model settings (for TransformersProvider)
+    device_map: str = "auto"
+    torch_dtype: str = "auto"
     # Reasoning model settings (for o1, o3, gpt-5.x models)
     reasoning_effort: Optional[str] = None  # "low", "medium", "high"
     # Model name prefixes that identify reasoning models
@@ -38,9 +41,18 @@ class LLMProvider(ABC):
         self.prompt_loader = get_prompt_loader()
 
     def is_reasoning_model(self) -> bool:
-        """Check if the current model is a reasoning model based on prefix matching."""
+        """Check if the current model is a reasoning model based on prefix matching.
+
+        Handles both plain names (e.g., 'gpt-5') and HuggingFace namespace/model
+        format (e.g., 'Qwen/Qwen3-8B') by checking both the full name and the
+        part after '/' case-insensitively.
+        """
+        names = [self.model_name.lower()]
+        if "/" in self.model_name:
+            names.append(self.model_name.split("/", 1)[1].lower())
         return any(
-            self.model_name.startswith(p)
+            name.startswith(p.lower())
+            for name in names
             for p in self.config.reasoning_model_prefixes
         )
 

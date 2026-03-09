@@ -1,29 +1,23 @@
 <!--
   SYNC IMPACT REPORT
   ==================
-  Version change: N/A → 1.0.0 (initial adoption)
+  Version change: 1.0.0 → 1.1.0 (MINOR: new principle added)
 
   Added Principles:
-  - I. TDD Cycle (Red-Green-Refactor)
-  - II. TDD Methodology
-  - III. Tidy First Approach
-  - IV. Commit Discipline
-  - V. Code Quality Standards
-  - VI. Refactoring Guidelines
-  - VII. Development Workflow
+  - VIII. Plan.md-Driven TDD Workflow (new)
 
-  Added Sections:
-  - Core Principles (7 principles)
-  - Code Quality Standards
-  - Development Workflow
-  - Governance
+  Modified Principles: None
 
-  Removed Sections: None (initial creation)
+  Removed Principles: None
+
+  Added Sections: None
+
+  Removed Sections: None
 
   Templates requiring updates:
-  - .specify/templates/plan-template.md: ✅ Updated - Constitution Check section now has TDD/Tidy First gates
-  - .specify/templates/spec-template.md: ✅ No changes needed - User scenarios align with TDD approach
-  - .specify/templates/tasks-template.md: ✅ Updated - TDD language and Tidy First commit guidance added
+  - .specify/templates/plan-template.md: ✅ Already contains Notes section aligned with plan.md tracking
+  - .specify/templates/spec-template.md: ✅ No changes needed
+  - .specify/templates/tasks-template.md: ✅ Already contains TDD language and checkbox tracking
   - .specify/templates/checklist-template.md: ✅ No changes needed
   - .specify/templates/agent-file-template.md: ✅ No changes needed
 
@@ -133,6 +127,23 @@ When approaching a new feature, follow this workflow:
 This process MUST be followed precisely, prioritizing clean, well-tested code
 over quick implementation.
 
+### VIII. Plan.md-Driven TDD Workflow
+
+The instructions in `plan.md` MUST always be followed. When executing a TDD
+session, the following protocol applies:
+
+- **"go" command**: When the user says "go", locate the next unchecked test task
+  in `plan.md` (first `- [ ]` item that is a test), implement that test so it
+  fails (Red), then implement only the minimum production code required to make
+  that test pass (Green). Do not implement additional tests or features beyond
+  what is needed for that single test.
+- **Single-step discipline**: Each "go" invocation covers exactly one test cycle.
+  After the test passes, stop and await the next "go".
+- **Marking completion**: After a test and its corresponding implementation pass,
+  mark the test task as complete (`- [x]`) in `plan.md`.
+- **Ordering**: Always process `plan.md` test tasks in order from top to bottom.
+  Never skip an unchecked test.
+
 ## Code Quality Standards
 
 ### Testing Requirements
@@ -196,4 +207,4 @@ Constitution versions follow semantic versioning:
 - Complexity MUST be justified against these principles
 - The plan-template.md "Constitution Check" section MUST be completed for all features
 
-**Version**: 1.0.0 | **Ratified**: 2026-01-22 | **Last Amended**: 2026-01-22
+**Version**: 1.1.0 | **Ratified**: 2026-01-22 | **Last Amended**: 2026-03-05

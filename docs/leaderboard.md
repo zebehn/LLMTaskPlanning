@@ -1,0 +1,98 @@
+# LoTa-Bench Leaderboard
+
+Results of ReAct-based task planning evaluations on ALFRED.
+Each row links to a detailed report with per-task-type breakdown.
+
+---
+
+## Main Leaderboard
+
+| # | Model | Eval Mode | Split | Sample | Success | Rate | Avg Steps | Date | Report |
+|---|-------|-----------|-------|--------|---------|------|-----------|------|--------|
+| 1 | [Qwen/Qwen3-8B](#exp-2-qwen3-8b--react--valid_seen--30pct) | ReAct | valid_seen | 30% | 62 / 204 | **30.39%** | 14.8 | 2026-03-09 | [details](#exp-2-qwen3-8b--react--valid_seen--30pct) |
+| 2 | [Qwen/Qwen3-8B](#exp-1-qwen3-8b--react--valid_seen--5pct) | ReAct | valid_seen | 5% | 7 / 33 | 21.21% | 15.8 | 2026-03-05 | [details](#exp-1-qwen3-8b--react--valid_seen--5pct) |
+
+> Sorted by success rate. Add new rows as experiments are completed.
+> **Sample** = `alfred.eval_portion_in_percent` setting.
+> All ReAct runs use `max_steps=25`, `temperature=0.0`.
+
+---
+
+## Experiment Details
+
+---
+
+### Exp 2: Qwen3-8B · ReAct · valid_seen · 30pct
+
+**Date**: 2026-03-09
+**Model**: `Qwen/Qwen3-8B` (local HuggingFace, bfloat16)
+**Hardware**: 2× NVIDIA A100 80GB (`CUDA_VISIBLE_DEVICES=0,6`)
+**Config**: `conf/config_alfred_react_local.yaml`, `alfred.eval_portion_in_percent=30`
+**Output dir**: `outputs/alfred_react/2026-03-09_11-51-45/`
+**Wall time**: 6 h 14 min 11 s
+
+#### Overall Results
+
+| Metric | Value |
+|--------|-------|
+| Tasks evaluated | 204 |
+| Tasks succeeded | 62 |
+| **Success rate** | **30.39%** |
+| Average steps (all) | 14.8 |
+| Average steps (success) | 11.6 |
+| Average steps (failure) | 16.2 |
+| Action-level success | 68.7% (1971 / 2870) |
+| Termination: done_signal | 150 (73.5%) |
+| Termination: max_steps | 49 (24.0%) |
+| Termination: malformed_output | 5 (2.5%) |
+
+#### Results by Task Type
+
+| Task Type | Success | Total | Rate |
+|-----------|---------|-------|------|
+| `pick_cool_then_place_in_recep` | 18 | 39 | **46.2%** |
+| `pick_clean_then_place_in_recep` | 11 | 32 | **34.4%** |
+| `look_at_obj_in_light` | 5 | 15 | **33.3%** |
+| `pick_and_place_simple` | 16 | 51 | 31.4% |
+| `pick_heat_then_place_in_recep` | 10 | 34 | 29.4% |
+| `pick_and_place_with_movable_recep` | 2 | 33 | 6.1% |
+
+Full report: [`outputs/alfred_react/2026-03-09_11-51-45/evaluation_report.md`](../outputs/alfred_react/2026-03-09_11-51-45/evaluation_report.md)
+
+---
+
+### Exp 1: Qwen3-8B · ReAct · valid_seen · 5pct
+
+**Date**: 2026-03-05
+**Model**: `Qwen/Qwen3-8B` (local HuggingFace, bfloat16)
+**Hardware**: 2× NVIDIA A100 80GB (`CUDA_VISIBLE_DEVICES=0,6`)
+**Config**: `conf/config_alfred_react_local.yaml` (default 5%)
+**Output dir**: `outputs/alfred_react/2026-03-05_16-28-07/`
+**Wall time**: 1 h 33 min 20 s
+
+#### Overall Results
+
+| Metric | Value |
+|--------|-------|
+| Tasks evaluated | 33 |
+| Tasks succeeded | 7 |
+| **Success rate** | **21.21%** |
+| Average steps (all) | 15.8 |
+| Average steps (success) | 12.6 |
+| Average steps (failure) | 16.7 |
+| Action-level success | 63.1% (316 / 501) |
+| Termination: done_signal | 21 (80.8%) |
+| Termination: max_steps | 10 (38.5%) |
+| Termination: malformed_output | 2 (7.7%) |
+
+#### Results by Task Type
+
+| Task Type | Success | Total | Rate |
+|-----------|---------|-------|------|
+| `pick_heat_then_place_in_recep` | 2 | 4 | **50.0%** |
+| `pick_clean_then_place_in_recep` | 3 | 8 | **37.5%** |
+| `pick_and_place_simple` | 2 | 10 | 20.0% |
+| `pick_cool_then_place_in_recep` | 0 | 4 | 0.0% |
+| `pick_and_place_with_movable_recep` | 0 | 7 | 0.0% |
+
+Full report: [`outputs/alfred_react/2026-03-05_16-28-07/evaluation_report.md`](../outputs/alfred_react/2026-03-05_16-28-07/evaluation_report.md)
