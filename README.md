@@ -2,7 +2,7 @@
 
 > **Fork Notice**: This is a fork of the original [LoTa-Bench](https://github.com/lbaa2022/LLMTaskPlanning) repository with significant updates for modern compatibility and extended LLM support.
 
-### [Paper (ICLR 2024)](https://arxiv.org/abs/2402.08178) | [Project Page](https://choi-jaewoo.github.io/LoTa-Bench/) | [Original Repository](https://github.com/lbaa2022/LLMTaskPlanning)
+### [Paper (ICLR 2024)](https://arxiv.org/abs/2402.08178) | [Project Page](https://choi-jaewoo.github.io/LoTa-Bench/) | [Original Repository](https://github.com/lbaa2022/LLMTaskPlanning) | [Leaderboard](docs/leaderboard.md)
 
 [Jae-Woo Choi](https://choi-jaewoo.github.io/)<sup>1*</sup>, [Youngwoo Yoon](https://sites.google.com/view/youngwoo-yoon/)<sup>1*</sup>, Hyobin Ong<sup>1, 2</sup>, Jaehong Kim<sup>1</sup>, Minsu Jang<sup>1, 2</sup> (*equal contribution)
 
@@ -55,6 +55,13 @@ This fork introduces the following improvements over the original repository:
   - Full reasoning trace recorded per task (thought, action, observation, success for each step)
   - Per-task-type success rate breakdown and aggregate statistics saved as `react_summary.json`
   - 27 unit tests covering output parsing, observation construction, evaluation loop, and config dispatch
+
+### Local Model Evaluation (Transformers Provider)
+- **New `config_alfred_react_local` evaluation mode** — Run a ReAct evaluation using a local HuggingFace model (e.g., Qwen/Qwen3-8B) without any API key:
+  - Uses the HuggingFace `transformers` library for local inference with CUDA GPU support
+  - `device_map` and `torch_dtype` configurable via Hydra CLI overrides
+  - Output schema identical to API-based runs for direct comparison
+  - 28 unit tests covering LLMConfig fields, factory registration, initialization, inference, and schema parity
 
 ### Instruction Validation
 - **LLM-based annotation quality analysis** — Classifies ALFRED task instructions into 4 categories (valid, non_existent, goal_mismatch, ambiguous) by comparing annotator-written instructions against scene objects and PDDL ground truth
@@ -111,6 +118,7 @@ The system supports OpenAI API compatible LLM providers through a unified interf
 | **vLLM** | Any model served locally | 8000 | `VLLM_API_BASE` |
 | **Ollama** | llama2, llama3, mistral, codellama, etc. | 11434 | `OLLAMA_API_BASE` |
 | **LM Studio** | Any loaded model | 1234 | `LMSTUDIO_API_BASE` |
+| **Transformers** | Any HuggingFace causal LM (e.g., Qwen/Qwen3-8B) | N/A (local) | No key required |
 
 ### Environment Variables (.env file)
 
@@ -189,6 +197,16 @@ python src/evaluate.py --config-name=config_alfred \
     planner.model_name=openai/gpt-oss-20b \
     planner.api_base=http://10.254.90.90:1234/v1
 ```
+
+**With local Transformers (Qwen3-8B, no API key):**
+```bash
+# Requires: pip install transformers>=4.51.0 torch>=2.0.0 accelerate>=0.26.0
+PYTHONPATH="alfred:src:$PYTHONPATH" python src/evaluate.py \
+    --config-name=config_alfred_react_local
+```
+
+See [specs/001-local-transformers-provider/quickstart.md](specs/001-local-transformers-provider/quickstart.md)
+for full prerequisites, hardware requirements, CLI override examples, and troubleshooting.
 
 ### Configuration Options
 
@@ -825,6 +843,7 @@ python src/evaluate.py --config-name=<CONFIG> [OVERRIDES...]
 | `config_alfred` | LLM-based ALFRED | Run an LLM planner on ALFRED tasks in AI2-THOR |
 | `config_alfred_gt` | Ground-truth ALFRED | Execute known-correct plans to validate the simulator |
 | `config_alfred_react` | ReAct ALFRED | Run a ReAct (Thought-Action-Observation) planner on ALFRED tasks |
+| `config_alfred_react_local` | ReAct ALFRED (local) | ReAct planner using a local HuggingFace model (no API key required) |
 | `config_wah` | Watch-And-Help | Run an LLM planner on WAH tasks in VirtualHome |
 | `config_wah_headless` | WAH (headless) | Same as `config_wah` for headless server setups |
 

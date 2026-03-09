@@ -11,6 +11,7 @@ from .openai_provider import OpenAIProvider
 from .vllm_provider import VLLMProvider
 from .ollama_provider import OllamaProvider
 from .lmstudio_provider import LMStudioProvider
+from .transformers_provider import TransformersProvider
 
 
 class LLMProviderFactory:
@@ -26,12 +27,13 @@ class LLMProviderFactory:
         response = provider.chat_completion(messages)
     """
 
-    # Provider name to class mapping (OpenAI API compatible only)
+    # Provider name to class mapping
     PROVIDERS = {
         "openai": OpenAIProvider,
         "vllm": VLLMProvider,
         "ollama": OllamaProvider,
         "lmstudio": LMStudioProvider,
+        "transformers": TransformersProvider,
     }
 
     @classmethod
@@ -44,7 +46,9 @@ class LLMProviderFactory:
         temperature: float = 0.0,
         max_tokens: int = 500,
         reasoning_effort: Optional[str] = None,
-        reasoning_model_prefixes: Optional[Tuple[str, ...]] = None
+        reasoning_model_prefixes: Optional[Tuple[str, ...]] = None,
+        device_map: str = "auto",
+        torch_dtype: str = "auto",
     ) -> LLMProvider:
         """
         Create an LLM provider instance.
@@ -82,6 +86,8 @@ class LLMProviderFactory:
             temperature=temperature,
             max_tokens=max_tokens,
             reasoning_effort=reasoning_effort,
+            device_map=device_map,
+            torch_dtype=torch_dtype,
         )
         if reasoning_model_prefixes is not None:
             config_kwargs["reasoning_model_prefixes"] = reasoning_model_prefixes
@@ -138,6 +144,10 @@ class LLMProviderFactory:
         temperature = getattr(planner_cfg, 'temperature', 0.0)
         max_tokens = getattr(planner_cfg, 'max_tokens', 500)
 
+        # Get local model settings (for TransformersProvider)
+        device_map = getattr(planner_cfg, 'device_map', 'auto') or 'auto'
+        torch_dtype = getattr(planner_cfg, 'torch_dtype', 'auto') or 'auto'
+
         # Get reasoning model settings (for o1, o3, gpt-5.x)
         reasoning_effort = getattr(planner_cfg, 'reasoning_effort', None)
 
@@ -155,7 +165,9 @@ class LLMProviderFactory:
             temperature=temperature,
             max_tokens=max_tokens,
             reasoning_effort=reasoning_effort,
-            reasoning_model_prefixes=reasoning_model_prefixes
+            reasoning_model_prefixes=reasoning_model_prefixes,
+            device_map=device_map,
+            torch_dtype=torch_dtype,
         )
 
     @classmethod
