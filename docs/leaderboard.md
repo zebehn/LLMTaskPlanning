@@ -10,8 +10,9 @@ Each row links to a detailed report with per-task-type breakdown.
 | # | Model | Eval Mode | Split | Sample | Success | Rate | Avg Steps | Date | Report |
 |---|-------|-----------|-------|--------|---------|------|-----------|------|--------|
 | 1 | [gpt-5.2](#exp-3-gpt-52--react--valid_seen--30pct) | ReAct | valid_seen | 30% | 110 / 204 | **53.92%** | 12.5 | 2026-03-09 | [details](#exp-3-gpt-52--react--valid_seen--30pct) |
-| 2 | [Qwen/Qwen3-8B](#exp-2-qwen3-8b--react--valid_seen--30pct) | ReAct | valid_seen | 30% | 62 / 204 | 30.39% | 14.8 | 2026-03-09 | [details](#exp-2-qwen3-8b--react--valid_seen--30pct) |
-| 3 | [Qwen/Qwen3-8B](#exp-1-qwen3-8b--react--valid_seen--5pct) | ReAct | valid_seen | 5% | 7 / 33 | 21.21% | 15.8 | 2026-03-05 | [details](#exp-1-qwen3-8b--react--valid_seen--5pct) |
+| 2 | [Qwen/Qwen3.5-9B](#exp-4-qwen35-9b--react--valid_seen--30pct) | ReAct | valid_seen | 30% | 87 / 204 | 42.65% | 12.9 | 2026-03-10 | [details](#exp-4-qwen35-9b--react--valid_seen--30pct) |
+| 3 | [Qwen/Qwen3-8B](#exp-2-qwen3-8b--react--valid_seen--30pct) | ReAct | valid_seen | 30% | 62 / 204 | 30.39% | 14.8 | 2026-03-09 | [details](#exp-2-qwen3-8b--react--valid_seen--30pct) |
+| 4 | [Qwen/Qwen3-8B](#exp-1-qwen3-8b--react--valid_seen--5pct) | ReAct | valid_seen | 5% | 7 / 33 | 21.21% | 15.8 | 2026-03-05 | [details](#exp-1-qwen3-8b--react--valid_seen--5pct) |
 
 > Sorted by success rate. Add new rows as experiments are completed.
 > **Sample** = `alfred.eval_portion_in_percent` setting.
@@ -57,6 +58,44 @@ Each row links to a detailed report with per-task-type breakdown.
 | `pick_and_place_with_movable_recep` | 9 | 33 | 27.3% |
 
 Full report: `outputs/alfred_react/2026-03-09_19-42-39/evaluation_report.md`
+
+---
+
+### Exp 4: Qwen3.5-9B · ReAct · valid_seen · 30pct
+
+**Date**: 2026-03-10
+**Model**: `Qwen/Qwen3.5-9B` (local HuggingFace, bfloat16)
+**Hardware**: 2× NVIDIA A100 80GB
+**Config**: `conf/config_alfred_react_local.yaml`, `planner.model_name=Qwen/Qwen3.5-9B`, `alfred.eval_portion_in_percent=30`
+**Wall time**: 6 h 20 min 43 s
+
+#### Overall Results
+
+| Metric | Value |
+|--------|-------|
+| Tasks evaluated | 204 |
+| Tasks succeeded | 87 |
+| **Success rate** | **42.65%** |
+| Average steps (all) | 12.9 |
+| Average steps (success) | 10.3 |
+| Average steps (failure) | 14.8 |
+| Action-level success | 80.4% (1971 / 2453) |
+| Termination: done_signal | 169 (82.8%) |
+| Termination: max_steps | 29 (14.2%) |
+| Termination: malformed_output | 6 (2.9%) |
+
+#### Results by Task Type
+
+| Task Type | Success | Total | Rate |
+|-----------|---------|-------|------|
+| `look_at_obj_in_light` | 11 | 15 | **73.3%** |
+| `pick_and_place_simple` | 29 | 51 | **56.9%** |
+| `pick_cool_then_place_in_recep` | 20 | 39 | **51.3%** |
+| `pick_clean_then_place_in_recep` | 12 | 32 | 37.5% |
+| `pick_heat_then_place_in_recep` | 13 | 34 | 38.2% |
+| `pick_and_place_with_movable_recep` | 2 | 33 | 6.1% |
+
+Full report: `outputs/alfred_react/2026-03-09_23-44-11/evaluation_report.md`
 
 ---
 
