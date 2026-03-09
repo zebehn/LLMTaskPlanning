@@ -26,9 +26,8 @@ Each row links to a detailed report with per-task-type breakdown.
 
 **Date**: 2026-03-09
 **Model**: `Qwen/Qwen3-8B` (local HuggingFace, bfloat16)
-**Hardware**: 2× NVIDIA A100 80GB (`CUDA_VISIBLE_DEVICES=0,6`)
+**Hardware**: 2× NVIDIA A100 80GB
 **Config**: `conf/config_alfred_react_local.yaml`, `alfred.eval_portion_in_percent=30`
-**Output dir**: `outputs/alfred_react/2026-03-09_11-51-45/`
 **Wall time**: 6 h 14 min 11 s
 
 #### Overall Results
@@ -57,7 +56,7 @@ Each row links to a detailed report with per-task-type breakdown.
 | `pick_heat_then_place_in_recep` | 10 | 34 | 29.4% |
 | `pick_and_place_with_movable_recep` | 2 | 33 | 6.1% |
 
-Full report: [`outputs/alfred_react/2026-03-09_11-51-45/evaluation_report.md`](../outputs/alfred_react/2026-03-09_11-51-45/evaluation_report.md)
+Full report: `outputs/alfred_react/2026-03-09_11-51-45/evaluation_report.md`
 
 ---
 
@@ -65,9 +64,8 @@ Full report: [`outputs/alfred_react/2026-03-09_11-51-45/evaluation_report.md`](.
 
 **Date**: 2026-03-05
 **Model**: `Qwen/Qwen3-8B` (local HuggingFace, bfloat16)
-**Hardware**: 2× NVIDIA A100 80GB (`CUDA_VISIBLE_DEVICES=0,6`)
+**Hardware**: 2× NVIDIA A100 80GB
 **Config**: `conf/config_alfred_react_local.yaml` (default 5%)
-**Output dir**: `outputs/alfred_react/2026-03-05_16-28-07/`
 **Wall time**: 1 h 33 min 20 s
 
 #### Overall Results
@@ -95,4 +93,4 @@ Full report: [`outputs/alfred_react/2026-03-09_11-51-45/evaluation_report.md`](.
 | `pick_cool_then_place_in_recep` | 0 | 4 | 0.0% |
 | `pick_and_place_with_movable_recep` | 0 | 7 | 0.0% |
 
-Full report: [`outputs/alfred_react/2026-03-05_16-28-07/evaluation_report.md`](../outputs/alfred_react/2026-03-05_16-28-07/evaluation_report.md)
+Full report: `outputs/alfred_react/2026-03-05_16-28-07/evaluation_report.md`
