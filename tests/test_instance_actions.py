@@ -92,6 +92,7 @@ def _make_connector(objects):
     tc.cur_receptacle = None
     tc.sliced = False
     tc.agent_height = 0.9
+    tc._last_found_label = None
 
     # Mock last_event
     tc.last_event = MagicMock()
