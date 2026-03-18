@@ -4,150 +4,187 @@ Here are examples of how to complete household tasks:
 
 Task: Put a clean lettuce in diningtable.
 {"Think": "To solve the task, I need to find a lettuce, pick it up, clean it in a sinkbasin by turning on the faucet, then find the diningtable and put it down. Let me start by finding a lettuce.", "Act": "find a lettuce"}
-Obs: Found lettuce. You are now near the lettuce on the countertop.
-{"Think": "I found the lettuce. Now I need to pick it up.", "Act": "pick up the lettuce"}
-Obs: You picked up the lettuce.
-{"Think": "I have the lettuce. Now I need to clean it at a sinkbasin. Let me find a sinkbasin.", "Act": "find a sinkbasin"}
-Obs: Found sinkbasin. You are now near the sinkbasin.
-{"Think": "I am near the sinkbasin. I should put the lettuce in the sinkbasin and use the faucet to clean it.", "Act": "put down the lettuce"}
-Obs: You put the lettuce in the sinkbasin.
-{"Think": "The lettuce is in the sinkbasin. Now I need to turn on the faucet to clean it.", "Act": "turn on the faucet"}
-Obs: You turned on the faucet.
-{"Think": "The faucet is running and the lettuce is being cleaned. Now I should turn off the faucet.", "Act": "turn off the faucet"}
-Obs: You turned off the faucet.
-{"Think": "The lettuce is now clean. I need to pick it up again.", "Act": "pick up the lettuce"}
-Obs: You picked up the lettuce.
-{"Think": "I have the clean lettuce. Now I need to find the diningtable to place it.", "Act": "find a diningtable"}
-Obs: Found diningtable. You are now near the diningtable.
-{"Think": "I am near the diningtable. I should put down the clean lettuce here.", "Act": "put down the lettuce"}
-Obs: You put the lettuce on the diningtable.
-{"Think": "The clean lettuce is on the diningtable. The task is complete.", "Act": "done"}
+Obs: Found lettuce. You are now near the Lettuce_1.
+{"Think": "I found Lettuce_1. Now I need to pick it up.", "Act": "pick up the Lettuce_1"}
+Obs: Picked up Lettuce_1.
+{"Think": "I picked up Lettuce_1. I must remember this instance so I can retrieve it after cleaning. Now I need to find a sinkbasin.", "Act": "find a sinkbasin"}
+Obs: Found sinkbasin. You are now near the SinkBasin_1.
+{"Think": "I am near SinkBasin_1. I should put Lettuce_1 in it and use the faucet to clean it.", "Act": "put down the Lettuce_1"}
+Obs: Put Lettuce_1 in SinkBasin_1.
+{"Think": "Lettuce_1 is in SinkBasin_1. Now I need to turn on the faucet to clean it.", "Act": "turn on the Faucet_1"}
+Obs: You turned on the Faucet_1.
+{"Think": "The faucet is running and Lettuce_1 is being cleaned. Now I should turn off the faucet.", "Act": "turn off the Faucet_1"}
+Obs: You turned off the Faucet_1.
+{"Think": "Lettuce_1 is now clean. I must navigate back to the exact instance I cleaned.", "Act": "find Lettuce_1"}
+Obs: Found Lettuce_1. You are now near the Lettuce_1.
+{"Think": "I am near Lettuce_1. Now I pick it up.", "Act": "pick up the Lettuce_1"}
+Obs: Picked up Lettuce_1.
+{"Think": "I have the clean Lettuce_1. Now I need to find the diningtable to place it.", "Act": "find a diningtable"}
+Obs: Found diningtable. You are now near the DiningTable_1.
+{"Think": "I am near DiningTable_1. I should put down the clean Lettuce_1 here.", "Act": "put down the Lettuce_1"}
+Obs: Put Lettuce_1 in DiningTable_1.
+{"Think": "The clean Lettuce_1 is on DiningTable_1. The task is complete.", "Act": "done"}
 
 ---
 
 Task: Examine a pencil under the light of a desk lamp.
 {"Think": "To examine a pencil under a desk lamp, I need to find a pencil, pick it up, find a desk lamp, and turn on the desk lamp. Let me start by finding a pencil.", "Act": "find a pencil"}
-Obs: Found pencil. You are now near the pencil on the desk.
-{"Think": "I found the pencil. Now I need to pick it up.", "Act": "pick up the pencil"}
-Obs: You picked up the pencil.
-{"Think": "I have the pencil. Now I need to find a desk lamp to examine the pencil under it.", "Act": "find a desk lamp"}
-Obs: Found desk lamp. You are now near the desk lamp.
-{"Think": "I am near the desk lamp. I need to turn it on to examine the pencil under its light.", "Act": "turn on the desk lamp"}
-Obs: You turned on the desk lamp.
-{"Think": "The desk lamp is on and I am holding the pencil near it. The task is complete.", "Act": "done"}
+Obs: Found pencil. You are now near the Pencil_1.
+{"Think": "I found Pencil_1. Now I need to pick it up.", "Act": "pick up the Pencil_1"}
+Obs: Picked up Pencil_1.
+{"Think": "I have Pencil_1. Now I need to find a desk lamp to examine the pencil under it.", "Act": "find a desk lamp"}
+Obs: Found desk lamp. You are now near the DeskLamp_1.
+{"Think": "I am near DeskLamp_1. I need to turn it on to examine the pencil under its light.", "Act": "turn on the DeskLamp_1"}
+Obs: You turned on the DeskLamp_1.
+{"Think": "DeskLamp_1 is on and I am holding Pencil_1 near it. The task is complete.", "Act": "done"}
 
 ---
 
 Task: Put a hot egg in the fridge.
 {"Think": "To put a hot egg in the fridge, I need to find an egg, pick it up, heat it in the microwave, then put it in the fridge. Let me start by finding an egg.", "Act": "find a egg"}
-Obs: Found egg. You are now near the egg on the countertop.
-{"Think": "I found the egg. Now I need to pick it up.", "Act": "pick up the egg"}
-Obs: You picked up the egg.
-{"Think": "I have the egg. Now I need to heat it in the microwave. Let me find the microwave first.", "Act": "find a microwave"}
-Obs: Found microwave. You are now near the microwave.
-{"Think": "I am near the microwave. I need to open it and put the egg inside.", "Act": "open the microwave"}
-Obs: You opened the microwave.
-{"Think": "The microwave is open. Now I can put the egg in.", "Act": "put down the egg"}
-Obs: You put the egg in the microwave.
-{"Think": "The egg is in the microwave. I need to close it and turn it on to heat the egg.", "Act": "close the microwave"}
-Obs: You closed the microwave.
-{"Think": "Now I need to turn on the microwave to heat the egg.", "Act": "turn on the microwave"}
-Obs: You turned on the microwave.
-{"Think": "The egg is being heated. Now I need to turn off the microwave and open it to take the egg out.", "Act": "turn off the microwave"}
-Obs: You turned off the microwave.
-{"Think": "The microwave is off. Now I need to open it to take the egg out.", "Act": "open the microwave"}
-Obs: You opened the microwave.
-{"Think": "The microwave is open. I need to pick up the hot egg.", "Act": "pick up the egg"}
-Obs: You picked up the egg.
-{"Think": "I have the hot egg. I should close the microwave before moving on.", "Act": "close the microwave"}
-Obs: You closed the microwave.
-{"Think": "The microwave is closed. Now I need to put the hot egg in the fridge. Let me find the fridge.", "Act": "find a fridge"}
-Obs: Found fridge. You are now near the fridge.
-{"Think": "I am near the fridge. I need to open it and put the egg inside.", "Act": "open the fridge"}
-Obs: You opened the fridge.
-{"Think": "The fridge is open. Now I can put the hot egg in.", "Act": "put down the egg"}
-Obs: You put the egg in the fridge.
-{"Think": "The hot egg is in the fridge. The task is complete.", "Act": "done"}
+Obs: Found egg. You are now near the Egg_1.
+{"Think": "I found Egg_1. Now I need to pick it up.", "Act": "pick up the Egg_1"}
+Obs: Picked up Egg_1.
+{"Think": "I picked up Egg_1. I must remember this instance so I can retrieve it after heating. Now I need to find the microwave.", "Act": "find a microwave"}
+Obs: Found microwave. You are now near the Microwave_1.
+{"Think": "I am near Microwave_1. I need to open it and put Egg_1 inside.", "Act": "open the Microwave_1"}
+Obs: You opened the Microwave_1.
+{"Think": "Microwave_1 is open. Now I can put Egg_1 in.", "Act": "put down the Egg_1"}
+Obs: Put Egg_1 in Microwave_1.
+{"Think": "Egg_1 is in Microwave_1. I need to close it and turn it on to heat Egg_1.", "Act": "close the Microwave_1"}
+Obs: You closed the Microwave_1.
+{"Think": "Now I need to turn on Microwave_1 to heat Egg_1.", "Act": "turn on the Microwave_1"}
+Obs: You turned on the Microwave_1.
+{"Think": "Egg_1 is being heated. Now I need to turn off Microwave_1 and open it to take Egg_1 out.", "Act": "turn off the Microwave_1"}
+Obs: You turned off the Microwave_1.
+{"Think": "Microwave_1 is off. Now I need to open it to retrieve Egg_1.", "Act": "open the Microwave_1"}
+Obs: You opened the Microwave_1.
+{"Think": "Microwave_1 is open. I must navigate to Egg_1 specifically so I retrieve the same egg I heated.", "Act": "find Egg_1"}
+Obs: Found Egg_1. You are now near the Egg_1.
+{"Think": "I am near Egg_1. Now I pick it up.", "Act": "pick up the Egg_1"}
+Obs: Picked up Egg_1.
+{"Think": "I have the hot Egg_1. I should close Microwave_1 before moving on.", "Act": "close the Microwave_1"}
+Obs: You closed the Microwave_1.
+{"Think": "Microwave_1 is closed. Now I need to put the hot Egg_1 in the fridge. Let me find the fridge.", "Act": "find a fridge"}
+Obs: Found fridge. You are now near the Fridge_1.
+{"Think": "I am near Fridge_1. I need to open it and put Egg_1 inside.", "Act": "open the Fridge_1"}
+Obs: You opened the Fridge_1.
+{"Think": "Fridge_1 is open. Now I can put the hot Egg_1 in.", "Act": "put down the Egg_1"}
+Obs: Put Egg_1 in Fridge_1.
+{"Think": "The hot Egg_1 is in Fridge_1. The task is complete.", "Act": "done"}
 
 ---
 
 Task: Put a cooled mug on the coffee table.
 {"Think": "To put a cooled mug on the coffee table, I need to find a mug, pick it up, cool it in the fridge, then put it on the coffee table. Let me start by finding a mug.", "Act": "find a mug"}
-Obs: Found mug. You are now near the mug on the shelf.
-{"Think": "I found the mug. Now I need to pick it up.", "Act": "pick up the mug"}
-Obs: You picked up the mug.
-{"Think": "I have the mug. Now I need to cool it in the fridge. Let me find the fridge.", "Act": "find a fridge"}
-Obs: Found fridge. You are now near the fridge.
-{"Think": "I am near the fridge. I need to open it and put the mug inside to cool it.", "Act": "open the fridge"}
-Obs: You opened the fridge.
-{"Think": "The fridge is open. Now I can put the mug in to cool it.", "Act": "put down the mug"}
-Obs: You put the mug in the fridge.
-{"Think": "The mug is in the fridge cooling. I need to close the fridge and wait, then take the mug out.", "Act": "close the fridge"}
-Obs: You closed the fridge.
-{"Think": "Now I need to open the fridge and take the cooled mug out.", "Act": "open the fridge"}
-Obs: You opened the fridge.
-{"Think": "The fridge is open. I need to pick up the cooled mug.", "Act": "pick up the mug"}
-Obs: You picked up the mug.
-{"Think": "I have the cooled mug. I should close the fridge before moving on.", "Act": "close the fridge"}
-Obs: You closed the fridge.
-{"Think": "The fridge is closed. Now I need to find the coffee table and put the cooled mug there.", "Act": "find a coffee table"}
-Obs: Found coffee table. You are now near the coffee table.
-{"Think": "I am near the coffee table. I should put down the cooled mug here.", "Act": "put down the mug"}
-Obs: You put the mug on the coffee table.
-{"Think": "The cooled mug is on the coffee table. The task is complete.", "Act": "done"}
+Obs: Found mug. You are now near the Mug_1.
+{"Think": "I found Mug_1. Now I need to pick it up.", "Act": "pick up the Mug_1"}
+Obs: Picked up Mug_1.
+{"Think": "I picked up Mug_1. I must remember this instance so I can retrieve it after cooling. Now I need to find the fridge.", "Act": "find a fridge"}
+Obs: Found fridge. You are now near the Fridge_1.
+{"Think": "I am near Fridge_1. I need to open it and put Mug_1 inside to cool it.", "Act": "open the Fridge_1"}
+Obs: You opened the Fridge_1.
+{"Think": "Fridge_1 is open. Now I can put Mug_1 in to cool it.", "Act": "put down the Mug_1"}
+Obs: Put Mug_1 in Fridge_1.
+{"Think": "Mug_1 is in Fridge_1 cooling. I need to close the fridge, then take Mug_1 out.", "Act": "close the Fridge_1"}
+Obs: You closed the Fridge_1.
+{"Think": "Now I need to open Fridge_1 and navigate to the exact Mug_1 I placed.", "Act": "open the Fridge_1"}
+Obs: You opened the Fridge_1.
+{"Think": "Fridge_1 is open. I must navigate to Mug_1 specifically so I retrieve the same mug I cooled.", "Act": "find Mug_1"}
+Obs: Found Mug_1. You are now near the Mug_1.
+{"Think": "I am near Mug_1. Now I pick it up.", "Act": "pick up the Mug_1"}
+Obs: Picked up Mug_1.
+{"Think": "I have the cooled Mug_1. I should close Fridge_1 before moving on.", "Act": "close the Fridge_1"}
+Obs: You closed the Fridge_1.
+{"Think": "Fridge_1 is closed. Now I need to find the coffee table and put the cooled Mug_1 there.", "Act": "find a coffee table"}
+Obs: Found coffee table. You are now near the CoffeeTable_1.
+{"Think": "I am near CoffeeTable_1. I should put down the cooled Mug_1 here.", "Act": "put down the Mug_1"}
+Obs: Put Mug_1 in CoffeeTable_1.
+{"Think": "The cooled Mug_1 is on CoffeeTable_1. The task is complete.", "Act": "done"}
 
 ---
 
 Task: Put a knife on the countertop.
 {"Think": "To put a knife on the countertop, I need to find a knife, pick it up, find the countertop, and put it down. Let me start by finding a knife.", "Act": "find a knife"}
-Obs: Found knife. You are now near the knife on the diningtable.
-{"Think": "I found the knife. Now I need to pick it up.", "Act": "pick up the knife"}
-Obs: You picked up the knife.
-{"Think": "I have the knife. Now I need to find the countertop.", "Act": "find a countertop"}
-Obs: Found countertop. You are now near the countertop.
-{"Think": "I am near the countertop. I should put down the knife here.", "Act": "put down the knife"}
-Obs: You put the knife on the countertop.
-{"Think": "The knife is on the countertop. The task is complete.", "Act": "done"}
+Obs: Found knife. You are now near the Knife_1.
+{"Think": "I found Knife_1. Now I need to pick it up.", "Act": "pick up the Knife_1"}
+Obs: Picked up Knife_1.
+{"Think": "I have Knife_1. Now I need to find the countertop.", "Act": "find a countertop"}
+Obs: Found countertop. You are now near the CounterTop_1.
+{"Think": "I am near CounterTop_1. I should put down Knife_1 here.", "Act": "put down the Knife_1"}
+Obs: Put Knife_1 in CounterTop_1.
+{"Think": "Knife_1 is on CounterTop_1. The task is complete.", "Act": "done"}
 
 ---
 
 Task: Put a slice of tomato on the countertop.
 {"Think": "To put a slice of tomato on the countertop, I first need to find a knife to slice the tomato, then find the tomato and slice it, then pick up a slice, find the countertop, and put it down. Let me start by finding a knife.", "Act": "find a knife"}
-Obs: Found knife. You are now near the knife on the countertop.
-{"Think": "I found the knife. I need to pick it up so I can slice the tomato.", "Act": "pick up the knife"}
-Obs: You picked up the knife.
-{"Think": "I have the knife. Now I need to find a tomato to slice.", "Act": "find a tomato"}
-Obs: Found tomato. You are now near the tomato on the diningtable.
-{"Think": "I am near the tomato and I have the knife. I should slice the tomato.", "Act": "slice the tomato"}
-Obs: You sliced the tomato.
-{"Think": "The tomato is sliced. Now I need to put down the knife and pick up a tomato slice.", "Act": "put down the knife"}
-Obs: You put the knife down.
-{"Think": "I put down the knife. Now I need to pick up a slice of the tomato.", "Act": "pick up the tomato"}
-Obs: You picked up the tomato.
+Obs: Found knife. You are now near the Knife_1.
+{"Think": "I found Knife_1. I need to pick it up so I can slice the tomato.", "Act": "pick up the Knife_1"}
+Obs: Picked up Knife_1.
+{"Think": "I have Knife_1. Now I need to find a tomato to slice.", "Act": "find a tomato"}
+Obs: Found tomato. You are now near the Tomato_1.
+{"Think": "I am near Tomato_1 and I have Knife_1. I should slice Tomato_1.", "Act": "slice the Tomato_1"}
+Obs: You sliced the Tomato_1.
+{"Think": "Tomato_1 is sliced. Now I need to put down Knife_1, then navigate back to Tomato_1 before picking it up.", "Act": "put down the Knife_1"}
+Obs: Put Knife_1 in CounterTop_1.
+{"Think": "I put down Knife_1. I must navigate back to Tomato_1 before picking it up.", "Act": "find Tomato_1"}
+Obs: Found Tomato_1. You are now near the Tomato_1.
+{"Think": "I am near Tomato_1. Now I pick up the sliced tomato.", "Act": "pick up the Tomato_1"}
+Obs: Picked up Tomato_1.
 {"Think": "I have a tomato slice. Now I need to find the countertop and put it there.", "Act": "find a countertop"}
-Obs: Found countertop. You are now near the countertop.
-{"Think": "I am near the countertop. I should put down the tomato slice here.", "Act": "put down the tomato"}
-Obs: You put the tomato on the countertop.
-{"Think": "The tomato slice is on the countertop. The task is complete.", "Act": "done"}
+Obs: Found countertop. You are now near the CounterTop_1.
+{"Think": "I am near CounterTop_1. I should put down the tomato slice here.", "Act": "put down the Tomato_1"}
+Obs: Put Tomato_1 in CounterTop_1.
+{"Think": "The tomato slice is on CounterTop_1. The task is complete.", "Act": "done"}
 
 ---
 
 Task: Put a spatula in a pan on the countertop.
 {"Think": "To put a spatula in a pan on the countertop, I need to find the spatula, pick it up, find a pan, put the spatula in the pan, then pick up the pan and find the countertop to put it there. Let me start by finding a spatula.", "Act": "find a spatula"}
-Obs: Found spatula. You are now near the spatula on the shelf.
-{"Think": "I found the spatula. I need to pick it up.", "Act": "pick up the spatula"}
-Obs: You picked up the spatula.
-{"Think": "I have the spatula. Now I need to find a pan to put it in.", "Act": "find a pan"}
-Obs: Found pan. You are now near the pan on the stoveburner.
-{"Think": "I am near the pan. I should put the spatula in the pan.", "Act": "put down the spatula"}
-Obs: You put the spatula in the pan.
-{"Think": "The spatula is in the pan. Now I need to pick up the pan with the spatula in it.", "Act": "pick up the pan"}
-Obs: You picked up the pan.
-{"Think": "I have the pan with the spatula in it. Now I need to find the countertop and put it there.", "Act": "find a countertop"}
-Obs: Found countertop. You are now near the countertop.
-{"Think": "I am near the countertop. I should put down the pan with the spatula here.", "Act": "put down the pan"}
-Obs: You put the pan on the countertop.
-{"Think": "The pan with the spatula is on the countertop. The task is complete.", "Act": "done"}
+Obs: Found spatula. You are now near the Spatula_1.
+{"Think": "I found Spatula_1. I need to pick it up.", "Act": "pick up the Spatula_1"}
+Obs: Picked up Spatula_1.
+{"Think": "I have Spatula_1. Now I need to find a pan to put it in.", "Act": "find a pan"}
+Obs: Found pan. You are now near the Pan_1.
+{"Think": "I am near Pan_1. I should put Spatula_1 in Pan_1.", "Act": "put down the Spatula_1"}
+Obs: Put Spatula_1 in Pan_1.
+{"Think": "Spatula_1 is in Pan_1. Now I need to pick up Pan_1 with Spatula_1 in it.", "Act": "pick up the Pan_1"}
+Obs: Picked up Pan_1.
+{"Think": "I have Pan_1 with Spatula_1 in it. Now I need to find the countertop and put it there.", "Act": "find a countertop"}
+Obs: Found countertop. You are now near the CounterTop_1.
+{"Think": "I am near CounterTop_1. I should put down Pan_1 with Spatula_1 here.", "Act": "put down the Pan_1"}
+Obs: Put Pan_1 in CounterTop_1.
+{"Think": "Pan_1 with Spatula_1 is on CounterTop_1. The task is complete.", "Act": "done"}
+
+---
+
+Task: Cut the apple in the pot in half with a knife.
+{"Think": "To complete this task I need to: find a knife, slice the apple, then place the sliced apple in a pot and put the pot on the countertop. Let me start by finding a knife.", "Act": "find a knife"}
+Obs: Found knife. You are now near the Knife_1.
+{"Think": "I found Knife_1. I need to pick it up to slice the apple.", "Act": "pick up the Knife_1"}
+Obs: Picked up Knife_1.
+{"Think": "I have Knife_1. Now I need to find an apple to slice.", "Act": "find a apple"}
+Obs: Found apple. You are now near the Apple_1.
+{"Think": "I am near Apple_1 and holding Knife_1. I should slice Apple_1.", "Act": "slice the Apple_1"}
+Obs: You sliced the Apple_1.
+{"Think": "Apple_1 is sliced. Now I need to put down Knife_1, navigate back to Apple_1, pick up the slice, put it in a pot, then place the pot on the countertop.", "Act": "put down the Knife_1"}
+Obs: Put Knife_1 in CounterTop_1.
+{"Think": "I put down Knife_1. I must navigate back to Apple_1 before picking it up.", "Act": "find Apple_1"}
+Obs: Found Apple_1. You are now near the Apple_1.
+{"Think": "I am near Apple_1. Now I pick up the sliced apple.", "Act": "pick up the Apple_1"}
+Obs: Picked up Apple_1.
+{"Think": "I have a slice of Apple_1. Now I need to find a pot to put it in.", "Act": "find a pot"}
+Obs: Found pot. You are now near the Pot_1.
+{"Think": "I am near Pot_1. I should put Apple_1 in Pot_1.", "Act": "put down the Apple_1"}
+Obs: Put Apple_1 in Pot_1.
+{"Think": "Apple_1 is in Pot_1. Now I need to pick up Pot_1 with Apple_1 in it.", "Act": "pick up the Pot_1"}
+Obs: Picked up Pot_1.
+{"Think": "I have Pot_1 with Apple_1 in it. Now I need to find the countertop and put it there.", "Act": "find a countertop"}
+Obs: Found countertop. You are now near the CounterTop_1.
+{"Think": "I am near CounterTop_1. I should put down Pot_1 with Apple_1 here.", "Act": "put down the Pot_1"}
+Obs: Put Pot_1 in CounterTop_1.
+{"Think": "Pot_1 with the sliced Apple_1 is on CounterTop_1. The task is complete.", "Act": "done"}
 
 ---
 

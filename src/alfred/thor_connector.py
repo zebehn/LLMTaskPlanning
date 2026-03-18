@@ -35,6 +35,7 @@ class ThorConnector(ThorEnv):
         self.sliced = False
         self._obj_registry = {}  # AI2-THOR objectId -> readable name
         self._obj_registry_by_name = {}  # readable name -> AI2-THOR objectId
+        self._last_found_label = None  # readable_id of last successfully navigated object
 
     def restore_scene(self, object_poses, object_toggles, dirty_and_empty):
         super().restore_scene(object_poses, object_toggles, dirty_and_empty)
@@ -42,20 +43,112 @@ class ThorConnector(ThorEnv):
         self.cur_receptacle = None
         self._build_object_registry()
 
-    def _build_object_registry(self):
-        """Build a mapping from AI2-THOR objectIds to human-readable names."""
-        self._obj_registry = {}
-        self._obj_registry_by_name = {}
-        type_counts = {}
-        for obj in sorted(self.last_event.metadata['objects'], key=lambda o: o['objectId']):
-            obj_id = obj['objectId']
-            obj_type = obj_id.split('|')[0]
-            type_counts[obj_type] = type_counts.get(obj_type, 0) + 1
-            readable_name = f"{obj_type}_{type_counts[obj_type]}"
-            self._obj_registry[obj_id] = readable_name
-            self._obj_registry_by_name[readable_name] = obj_id
+    def _build_object_registry(self, preserve_existing=False):
+        """Build a mapping from AI2-THOR objectIds to human-readable names.
+
+        Args:
+            preserve_existing: If True, keeps existing objectId→label mappings
+                and only assigns new labels to objects not yet registered.
+                Use this after in-scene state changes (e.g. slicing) so that
+                instance labels remain stable across object state transitions.
+                If False (default), rebuilds the registry from scratch.
+        """
+        objects = self.last_event.metadata['objects']
+
+        if not preserve_existing:
+            self._obj_registry = {}
+            self._obj_registry_by_name = {}
+            type_counts = {}
+            for obj in sorted(objects, key=lambda o: o['objectId']):
+                obj_id = obj['objectId']
+                obj_type = obj_id.split('|')[0]
+                type_counts[obj_type] = type_counts.get(obj_type, 0) + 1
+                readable_name = f"{obj_type}_{type_counts[obj_type]}"
+                self._obj_registry[obj_id] = readable_name
+                self._obj_registry_by_name[readable_name] = obj_id
+        else:
+            # Incremental update: preserve existing labels, add new objects only.
+            existing_ids = {obj['objectId'] for obj in objects}
+
+            # Build a lookup for quick property access.
+            obj_by_id = {o['objectId']: o for o in objects}
+
+            # Remove stale entries for objects AI2-THOR removed (e.g. consumed items).
+            # For sliceable objects, AI2-THOR replaces the original with slice children
+            # whose objectIds are prefixed by the original (e.g. Bread|x|y|z →
+            # Bread|x|y|z|BreadSliced_1). Remap the original label to the first slice
+            # so that instance IDs remain stable across the slice state transition.
+            for oid in list(self._obj_registry.keys()):
+                if oid not in existing_ids:
+                    label = self._obj_registry.pop(oid)
+                    self._obj_registry_by_name.pop(label, None)
+                    # Look for slice children: objectIds that start with oid + '|'
+                    slice_ids = sorted(
+                        sid for sid in existing_ids
+                        if sid.startswith(oid + '|') and sid not in self._obj_registry
+                    )
+                    if slice_ids:
+                        first_slice = slice_ids[0]
+                        self._obj_registry[first_slice] = label
+                        self._obj_registry_by_name[label] = first_slice
+                        log.info(f"      [registry] remapped {label}: {oid} → {first_slice}")
+
+            # Handle the case where the original objectId stays in the scene but
+            # AI2-THOR marks it isSliced=True (non-pickupable). In this case the
+            # original is a "marker" and the actual pickupable pieces are new
+            # objects whose type is {OrigType}Sliced or whose objectId is prefixed
+            # by the original oid. Remap the label to the best slice piece so that
+            # the model can continue using the same instance label (e.g. Bread_1).
+            for oid in list(self._obj_registry.keys()):
+                obj = obj_by_id.get(oid)
+                if obj is None:
+                    continue
+                if not obj.get('isSliced', False):
+                    continue
+                # Already pickupable sliced object — no remap needed.
+                if obj.get('pickupable', True):
+                    continue
+                label = self._obj_registry[oid]
+                orig_type = oid.split('|')[0]
+                slice_type = orig_type + 'Sliced'
+                # Candidate slice pieces: prefix-children OR same {Type}Sliced type, not yet registered.
+                candidates = sorted(
+                    (o for o in objects
+                     if o['objectId'] not in self._obj_registry
+                     and (o['objectId'].startswith(oid + '|')
+                          or o['objectId'].split('|')[0] == slice_type)),
+                    key=lambda o: o['distance']
+                )
+                if candidates:
+                    best = next((c for c in candidates if c.get('pickupable', False)), candidates[0])
+                    new_oid = best['objectId']
+                    del self._obj_registry[oid]
+                    self._obj_registry_by_name.pop(label, None)
+                    self._obj_registry[new_oid] = label
+                    self._obj_registry_by_name[label] = new_oid
+                    log.info(f"      [registry] remapped sliced {label}: {oid} → {new_oid}")
+
+            # Determine current max count per type from preserved labels.
+            type_counts = {}
+            for label in self._obj_registry.values():
+                parts = label.rsplit('_', 1)
+                if len(parts) == 2 and parts[1].isdigit():
+                    obj_type = parts[0]
+                    type_counts[obj_type] = max(type_counts.get(obj_type, 0), int(parts[1]))
+
+            # Assign labels only to objects not yet in the registry.
+            for obj in sorted(objects, key=lambda o: o['objectId']):
+                obj_id = obj['objectId']
+                if obj_id not in self._obj_registry:
+                    obj_type = obj_id.split('|')[0]
+                    type_counts[obj_type] = type_counts.get(obj_type, 0) + 1
+                    readable_name = f"{obj_type}_{type_counts[obj_type]}"
+                    self._obj_registry[obj_id] = readable_name
+                    self._obj_registry_by_name[readable_name] = obj_id
+
+        num_types = len(set(lbl.rsplit('_', 1)[0] for lbl in self._obj_registry.values()))
         log.info(f"      Object registry: {len(self._obj_registry)} objects "
-                 f"({len(type_counts)} types)")
+                 f"({num_types} types)")
 
     @staticmethod
     def _is_instance_id(token: str) -> bool:
@@ -134,15 +227,29 @@ class ThorConnector(ThorEnv):
             return action_method(natural_word_to_ithor_name(obj_name), **kwargs)
 
     def llm_skill_interact(self, instruction: str):
-        if instruction.startswith("put down ") or instruction.startswith("open "):
-            pass
-        else:
+        # Determine whether this instruction should preserve the current receptacle target.
+        # - "put down" / "open": explicit carve-outs (receptacle is actively being used)
+        # - "pick up": agent is about to carry an object to the already-chosen receptacle
+        # - instance find (e.g. "find Plate_1"): navigating back to an object to pick it up,
+        #   so the previous type-based receptacle (e.g. "sink") must not be overwritten.
+        # Everything else (type-based find, turn on/off, slice, drop, close) resets the
+        # receptacle so stale state cannot carry over to a later put-down.
+        _find_target = (instruction.replace('find a ', '').replace('find an ', '').replace('find ', '')
+                        if instruction.startswith("find ") else None)
+        _is_instance_find = _find_target is not None and self._is_instance_id(_find_target)
+        _preserve_receptacle = (
+            instruction.startswith("put down ")
+            or instruction.startswith("open ")
+            or instruction.startswith("pick up ")
+            or _is_instance_find
+        )
+        if not _preserve_receptacle:
             self.cur_receptacle = None
 
         if instruction.startswith("find "):
-            obj_name = instruction.replace('find a ', '').replace('find an ', '').replace('find ', '')
-            self.cur_receptacle = obj_name
-            if self._is_instance_id(obj_name):
+            obj_name = _find_target
+            if _is_instance_find:
+                # Instance find: navigate to a known object without changing the receptacle.
                 resolved = self._resolve_instance_id(obj_name)
                 if resolved is None:
                     log.info(f"      [instance] '{obj_name}' not found in registry")
@@ -152,10 +259,17 @@ class ThorConnector(ThorEnv):
                     log.info(f"      [instance] {obj_name} -> {thor_id}")
                     ret = self.nav_obj(obj_type, self.sliced, target_obj_id=thor_id)
             else:
+                # Type-based find (e.g. "find a sink") — set the receptacle target.
+                self.cur_receptacle = obj_name
                 ret = self.nav_obj(natural_word_to_ithor_name(obj_name), self.sliced)
         elif instruction.startswith("pick up "):
             obj_name = instruction.replace('pick up the ', '').replace('pick up ', '')
             ret = self._dispatch_instance_or_generic(obj_name, self.pick)
+            # If pick up failed (e.g. already holding something), clear the receptacle
+            # so a subsequent "put down" drops the held object safely instead of
+            # attempting to place it into a stale / irrelevant receptacle.
+            if not self.last_event.metadata['lastActionSuccess']:
+                self.cur_receptacle = None
         elif instruction.startswith("put down "):
             if self.cur_receptacle is None:
                 ret = self.drop()
@@ -173,9 +287,10 @@ class ThorConnector(ThorEnv):
                 else:
                     ret = self.put(natural_word_to_ithor_name(receptacle))
 
-            if ret:
+            # put() now returns a success annotation on success (e.g. "Put Pan_1 in Fridge_1.").
+            # Only override to failure message when the action actually failed.
+            if not self.last_event.metadata['lastActionSuccess']:
                 ret = 'put down failed'
-                self.last_event.metadata['lastActionSuccess'] = False
 
         elif instruction.startswith("open "):
             obj_name = instruction.replace('open the ', '').replace('open ', '')
@@ -198,20 +313,35 @@ class ThorConnector(ThorEnv):
         else:
             assert False, 'instruction not supported'
 
-        # Check both simulator action success AND our return message
-        # (nav_obj may not perform simulator action if object not found)
-        action_failed = not self.last_event.metadata['lastActionSuccess'] or len(ret) > 0
+        # nav_obj returns '' on success and a non-empty error string on failure.
+        # Do NOT use lastActionSuccess for find: nav_obj may skip every simulator
+        # step when the target is already visible and close, leaving lastActionSuccess
+        # stale from the previous action (which may have been a failure).
+        # For all other actions trust lastActionSuccess as the ground truth.
+        if instruction.startswith("find "):
+            action_failed = (len(ret) > 0)
+            # Ensure lastActionSuccess reflects the nav_obj outcome so that
+            # subsequent actions start from a clean state.
+            if not action_failed:
+                self.last_event.metadata['lastActionSuccess'] = True
+        else:
+            action_failed = not self.last_event.metadata['lastActionSuccess']
+
         if action_failed:
             # Ensure lastActionSuccess reflects the actual failure
             self.last_event.metadata['lastActionSuccess'] = False
             if len(ret) > 0:
                 log.info(f"      => FAIL: {ret}")
         else:
-            log.info("      => ok")
+            # For find actions, include the instance label in the message so
+            # construct_observation can emit e.g. "You are now near the Fridge_1."
+            if instruction.startswith("find ") and self._last_found_label:
+                ret = self._last_found_label
+            log.info(f"      => ok" + (f": {ret}" if ret else ""))
 
         ret_dict = {
             'action': instruction,
-            'success': len(ret) <= 0,
+            'success': not action_failed,
             'message': ret
         }
 
@@ -376,6 +506,13 @@ class ThorConnector(ThorEnv):
                                 found = True
                                 break
 
+        # Record which instance was successfully navigated to (used by llm_skill_interact
+        # to include an instance label in the find observation).
+        if ret_msg == '':
+            self._last_found_label = self.readable_id(obj_id)
+        else:
+            self._last_found_label = None
+
         return ret_msg
 
     def get_obj_id_from_name(self, obj_name, only_pickupable=False, only_toggleable=False, priority_sliced=False, get_inherited=False,
@@ -500,7 +637,7 @@ class ThorConnector(ThorEnv):
                         ret_msg = f'Robot is currently holding {holding_obj_type}'
 
             if self.last_event.metadata['lastActionSuccess']:
-                ret_msg = ''
+                ret_msg = f"Picked up {self.readable_id(obj_id)}."
                 log.info('      [pick] PickupObject -> ok')
 
         return ret_msg
@@ -589,7 +726,7 @@ class ThorConnector(ThorEnv):
                         ret_msg = f'Putting the object on {receptacle_name} failed'
                     else:
                         log.info('      [put] PutObject ok')
-                        ret_msg = ''
+                        ret_msg = f"Put {self.readable_id(holding_obj_id)} in {self.readable_id(recep_id)}."
                         halt = True
                         break
                 if halt:
@@ -745,7 +882,52 @@ class ThorConnector(ThorEnv):
             if not self.last_event.metadata['lastActionSuccess']:
                 ret_msg = f"Slice action failed"
             else:
-                # Rebuild registry to capture newly created sliced instances
-                self._build_object_registry()
+                # Incremental rebuild: preserve existing labels so instance IDs
+                # remain stable; only new slice objects get new labels.
+                self._build_object_registry(preserve_existing=True)
+
+                # After slicing, the original objectId typically becomes non-pickupable
+                # while AI2-THOR spawns new slice-piece objects of type {OrigType}Sliced.
+                # Explicitly remap the label so the model can keep using the same ID.
+                if obj_id in self._obj_registry:
+                    label = self._obj_registry[obj_id]
+                    orig_type = obj_id.split('|')[0]
+                    slice_type = orig_type + 'Sliced'
+                    all_objects = self.last_event.metadata['objects']
+                    # Debug: log properties of the original sliced object
+                    for o in all_objects:
+                        if o['objectId'] == obj_id:
+                            log.info(f"      [slice] original object after SliceObject: "
+                                     f"isSliced={o.get('isSliced')}, pickupable={o.get('pickupable')}, "
+                                     f"objectType={o.get('objectType')}")
+                            break
+                    # Find slice pieces: prefix-children or {Type}Sliced type objects
+                    candidates = sorted(
+                        (o for o in all_objects
+                         if (o['objectId'].startswith(obj_id + '|')
+                             or o['objectId'].split('|')[0] == slice_type)
+                         and o['objectId'] != obj_id),
+                        key=lambda o: o['distance']
+                    )
+                    log.info(f"      [slice] slice candidates for {label}: {[c['objectId'] for c in candidates[:3]]}")
+                    if candidates:
+                        # Prefer {OrigType}Sliced objects (e.g. BreadSliced) over
+                        # other child objects (e.g. Bread_0) since tasks typically
+                        # require the sliced-type variant.
+                        # Slice-piece objectIds have format: Base|x|y|z|{SliceType}_{N}
+                        # so the type is in the LAST segment, not the first.
+                        sliced_candidates = [
+                            c for c in candidates
+                            if (c['objectId'].split('|')[-1].startswith(slice_type)
+                                or c.get('objectType', '') == slice_type)
+                        ]
+                        pool = sliced_candidates if sliced_candidates else candidates
+                        best = next((c for c in pool if c.get('pickupable', False)), pool[0])
+                        new_oid = best['objectId']
+                        del self._obj_registry[obj_id]
+                        self._obj_registry_by_name.pop(label, None)
+                        self._obj_registry[new_oid] = label
+                        self._obj_registry_by_name[label] = new_oid
+                        log.info(f"      [registry] remapped {label} to slice piece: {obj_id} → {new_oid}")
 
         return ret_msg

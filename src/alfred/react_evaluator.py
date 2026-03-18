@@ -44,13 +44,24 @@ def construct_observation(action_result: dict) -> str:
     # Parse action type and object
     if action.startswith("find "):
         obj = action.replace("find a ", "").replace("find an ", "").replace("find ", "")
+        # message carries the instance label (e.g. "Fridge_1") when nav succeeds
+        if message:
+            return f"Found {obj}. You are now near the {message}."
         return f"Found {obj}. You are now near the {obj}."
 
     elif action.startswith("pick up "):
+        # Use instance-label message from thor_connector when available
+        # e.g. "Picked up Egg_1." instead of generic "You picked up the egg."
+        if message:
+            return message
         obj = action.replace("pick up the ", "").replace("pick up ", "")
         return f"You picked up the {obj}."
 
     elif action.startswith("put down "):
+        # Use instance-label message from thor_connector when available
+        # e.g. "Put Egg_1 in Microwave_1." instead of generic fallback
+        if message:
+            return message
         obj = action.replace("put down the ", "").replace("put down ", "")
         return f"You put the {obj} down."
 
